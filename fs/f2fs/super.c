@@ -2285,23 +2285,27 @@ static int sanity_check_raw_super(struct f2fs_sb_info *sbi,
 		return 1;
 	}
 
-	if (segment_count > (le64_to_cpu(raw_super->block_count) >> 9)) {
+	if (segment_count > (le32_to_cpu(raw_super->block_count) >> 9)) {
 		f2fs_msg(sb, KERN_INFO,
-			"Wrong segment_count / block_count (%u > %llu)",
-			segment_count, le64_to_cpu(raw_super->block_count));
+			"Wrong segment_count / block_count (%u > %u)",
+			segment_count, le32_to_cpu(raw_super->block_count));
 		return 1;
 	}
 
-	if (secs_per_zone > total_sections || !secs_per_zone) {
+	if (secs_per_zone > total_sections) {
 		f2fs_msg(sb, KERN_INFO,
-			"Wrong secs_per_zone / total_sections (%u, %u)",
+			"Wrong secs_per_zone (%u > %u)",
 			secs_per_zone, total_sections);
 		return 1;
 	}
-	if (le32_to_cpu(raw_super->extension_count) > F2FS_MAX_EXTENSION) {
+	if (le32_to_cpu(raw_super->extension_count) > F2FS_MAX_EXTENSION ||
+			raw_super->hot_ext_count > F2FS_MAX_EXTENSION ||
+			(le32_to_cpu(raw_super->extension_count) +
+			raw_super->hot_ext_count) > F2FS_MAX_EXTENSION) {
 		f2fs_msg(sb, KERN_INFO,
-			"Corrupted extension count (%u > %u)",
+			"Corrupted extension count (%u + %u > %u)",
 			le32_to_cpu(raw_super->extension_count),
+			raw_super->hot_ext_count,
 			F2FS_MAX_EXTENSION);
 		return 1;
 	}
@@ -2344,10 +2348,7 @@ int sanity_check_ckpt(struct f2fs_sb_info *sbi)
 	unsigned int sit_segs, nat_segs;
 	unsigned int sit_bitmap_size, nat_bitmap_size;
 	unsigned int log_blocks_per_seg;
-	unsigned int segment_count_main;
-	unsigned int cp_pack_start_sum, cp_payload;
-	block_t user_block_count;
-	int i, j;
+	int i;
 
 	total = le32_to_cpu(raw_super->segment_count);
 	fsmeta = le32_to_cpu(raw_super->segment_count_ckpt);
@@ -2371,16 +2372,6 @@ int sanity_check_ckpt(struct f2fs_sb_info *sbi)
 		return 1;
 	}
 
-	user_block_count = le64_to_cpu(ckpt->user_block_count);
-	segment_count_main = le32_to_cpu(raw_super->segment_count_main);
-	log_blocks_per_seg = le32_to_cpu(raw_super->log_blocks_per_seg);
-	if (!user_block_count || user_block_count >=
-			segment_count_main << log_blocks_per_seg) {
-		f2fs_msg(sbi->sb, KERN_ERR,
-			"Wrong user_block_count: %u", user_block_count);
-		return 1;
-	}
-
 	main_segs = le32_to_cpu(raw_super->segment_count_main);
 	blocks_per_seg = sbi->blocks_per_seg;
 
@@ -2388,64 +2379,22 @@ int sanity_check_ckpt(struct f2fs_sb_info *sbi)
 		if (le32_to_cpu(ckpt->cur_node_segno[i]) >= main_segs ||
 			le16_to_cpu(ckpt->cur_node_blkoff[i]) >= blocks_per_seg)
 			return 1;
-		for (j = i + 1; j < NR_CURSEG_NODE_TYPE; j++) {
-			if (le32_to_cpu(ckpt->cur_node_segno[i]) ==
-				le32_to_cpu(ckpt->cur_node_segno[j])) {
-				f2fs_msg(sbi->sb, KERN_ERR,
-					"Node segment (%u, %u) has the same "
-					"segno: %u", i, j,
-					le32_to_cpu(ckpt->cur_node_segno[i]));
-				return 1;
-			}
-		}
 	}
 	for (i = 0; i < NR_CURSEG_DATA_TYPE; i++) {
 		if (le32_to_cpu(ckpt->cur_data_segno[i]) >= main_segs ||
 			le16_to_cpu(ckpt->cur_data_blkoff[i]) >= blocks_per_seg)
 			return 1;
-		for (j = i + 1; j < NR_CURSEG_DATA_TYPE; j++) {
-			if (le32_to_cpu(ckpt->cur_data_segno[i]) ==
-				le32_to_cpu(ckpt->cur_data_segno[j])) {
-				f2fs_msg(sbi->sb, KERN_ERR,
-					"Data segment (%u, %u) has the same "
-					"segno: %u", i, j,
-					le32_to_cpu(ckpt->cur_data_segno[i]));
-				return 1;
-			}
-		}
-	}
-	for (i = 0; i < NR_CURSEG_NODE_TYPE; i++) {
-		for (j = i; j < NR_CURSEG_DATA_TYPE; j++) {
-			if (le32_to_cpu(ckpt->cur_node_segno[i]) ==
-				le32_to_cpu(ckpt->cur_data_segno[j])) {
-				f2fs_msg(sbi->sb, KERN_ERR,
-					"Data segment (%u) and Data segment (%u)"
-					" has the same segno: %u", i, j,
-					le32_to_cpu(ckpt->cur_node_segno[i]));
-				return 1;
-			}
-		}
 	}
 
 	sit_bitmap_size = le32_to_cpu(ckpt->sit_ver_bitmap_bytesize);
 	nat_bitmap_size = le32_to_cpu(ckpt->nat_ver_bitmap_bytesize);
+	log_blocks_per_seg = le32_to_cpu(raw_super->log_blocks_per_seg);
 
 	if (sit_bitmap_size != ((sit_segs / 2) << log_blocks_per_seg) / 8 ||
 		nat_bitmap_size != ((nat_segs / 2) << log_blocks_per_seg) / 8) {
 		f2fs_msg(sbi->sb, KERN_ERR,
 			"Wrong bitmap size: sit: %u, nat:%u",
 			sit_bitmap_size, nat_bitmap_size);
-		return 1;
-	}
-
-	cp_pack_start_sum = __start_sum_addr(sbi);
-	cp_payload = __cp_payload(sbi);
-	if (cp_pack_start_sum < cp_payload + 1 ||
-		cp_pack_start_sum > blocks_per_seg - 1 -
-			NR_CURSEG_TYPE) {
-		f2fs_msg(sbi->sb, KERN_ERR,
-			"Wrong cp_pack_start_sum: %u",
-			cp_pack_start_sum);
 		return 1;
 	}
 
