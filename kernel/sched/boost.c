@@ -221,6 +221,13 @@ static void _sched_set_boost(int type)
 	else
 		sched_boost_disable(-type);
 
+	#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	if (type > 0)
+		stune_boost("top-app");
+	else
+		reset_stune_boost("top-app");
+	#endif // CONFIG_DYNAMIC_STUNE_BOOST
+
 	/*
 	 * sysctl_sched_boost holds the boost request from
 	 * user space which could be different from the
