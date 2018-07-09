@@ -61,6 +61,10 @@ static void set_boost_policy(int type)
 	boost_policy = SCHED_BOOST_ON_ALL;
 }
 
+#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+static int boost_slot;
+#endif // CONFIG_DYNAMIC_STUNE_BOOST
+
 static bool verify_boost_params(int type)
 {
 	return type >= RESTRAINED_BOOST_DISABLE && type <= RESTRAINED_BOOST;
@@ -223,9 +227,9 @@ static void _sched_set_boost(int type)
 
 	#ifdef CONFIG_DYNAMIC_STUNE_BOOST
 	if (type > 0)
-		stune_boost("top-app");
+		do_stune_sched_boost("top-app", &boost_slot);
 	else
-		reset_stune_boost("top-app");
+		reset_stune_boost("top-app", boost_slot);
 	#endif // CONFIG_DYNAMIC_STUNE_BOOST
 
 	/*
