@@ -1849,8 +1849,6 @@ static int __mtp_setup(struct mtp_instance *fi_mtp)
 	INIT_DELAYED_WORK(&cpu_freq_qos_work, update_qos_request);
 	pm_qos_add_request(&little_cpu_mtp_freq, PM_QOS_C0_CPUFREQ_MIN,
 				MIN_CPUFREQ);
-	pm_qos_add_request(&devfreq_mtp_request, PM_QOS_DEVFREQ_MIN,
-				MIN_CPUFREQ);
 	pm_qos_add_request(&big_cpu_mtp_freq, PM_QOS_C1_CPUFREQ_MIN,
 				MIN_CPUFREQ);
 	pm_qos_add_request(&big_plus_cpu_mtp_freq, PM_QOS_C2_CPUFREQ_MIN,

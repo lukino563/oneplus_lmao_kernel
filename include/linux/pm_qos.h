@@ -24,8 +24,6 @@ enum {
 	PM_QOS_C1_CPUFREQ_MIN,
 	PM_QOS_C2_CPUFREQ_MAX,
 	PM_QOS_C2_CPUFREQ_MIN,
-	PM_QOS_DEVFREQ_MAX,
-	PM_QOS_DEVFREQ_MIN,
 
 	/* insert new class ID */
 	PM_QOS_NUM_CLASSES,
@@ -55,8 +53,6 @@ enum pm_qos_flags_status {
 
 #define PM_QOS_CPUFREQ_MAX_DEFAULT_VALUE       MAX_CPUFREQ
 #define PM_QOS_CPUFREQ_MIN_DEFAULT_VALUE       MIN_CPUFREQ
-#define PM_QOS_DEVFREQ_MAX_DEFAULT_VALUE       MAX_CPUFREQ
-#define PM_QOS_DEVFREQ_MIN_DEFAULT_VALUE       MIN_CPUFREQ
 
 extern void msm_cpuidle_set_sleep_disable(bool disable);
 
