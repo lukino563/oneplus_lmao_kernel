@@ -2122,7 +2122,7 @@ static int __qseecom_process_reentrancy_blocked_on_listener(
 	}
 
 	/* find app_id & img_name from list */
-	if (!ptr_app) {
+	if (!ptr_app && data->client.app_arch != ELFCLASSNONE) {
 		if (data->client.from_smcinvoke) {
 			pr_debug("This request is from smcinvoke\n");
 			ptr_app = &dummy_app_entry;
