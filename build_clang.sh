@@ -29,13 +29,12 @@ REPACK_DIR="${HOME}/android/AnyKernel2"
 PATCH_DIR="${HOME}/android/AnyKernel2/patch"
 MODULES_DIR="${HOME}/android/AnyKernel2/modules"
 ZIP_MOVE="${HOME}/android/AK-releases"
-ZIMAGE_DIR="${HOME}/android/op7/arch/arm64/boot/"
+ZIMAGE_DIR="${HOME}/android/SmurfKernelOP7/arch/arm64/boot/"
 
 # Functions
 function clean_all {
 		rm -rf $MODULES_DIR/*
-		cd ~/android/op7/out/
-		rm -rf *
+		rm -rf ~/android/SmurfKernelOP7/out/*
 		#git reset --hard > /dev/null 2>&1
 		#git clean -f -d > /dev/null 2>&1
 		cd $KERNEL_DIR
@@ -44,7 +43,7 @@ function clean_all {
 }
 
 function make_kernel {
-		cp ~/android/op7/Makefile.clang ~/android/op7/Makefile
+		cp ~/android/SmurfKernelOP7/Makefile.clang ~/android/op7/Makefile
 		echo
 		make CC=clang CXX=clang++ O=out $DEFCONFIG
 		make CC=clang CXX=clang++ O=out $THREAD
@@ -60,7 +59,7 @@ function make_dtb {
 }
 
 function make_boot {
-		cp -vr ~/android/op7/out/arch/arm64/boot/Image-dtb ~/android/AnyKernel2/Image-dtb
+		cp -vr ~/android/SmurfKernelOP7/out/arch/arm64/boot/Image-dtb ~/android/AnyKernel2/Image-dtb
 }
 
 function move_boot {
