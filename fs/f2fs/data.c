@@ -587,6 +587,9 @@ static struct bio *f2fs_grab_read_bio(struct inode *inode, block_t blkaddr,
 		ctx->bio = bio;
 		ctx->enabled_steps = post_read_steps;
 		bio->bi_private = ctx;
+
+		/* wait the page to be moved by cleaning */
+		f2fs_wait_on_block_writeback(sbi, blkaddr);
 	}
 
 	return bio;
@@ -603,9 +606,6 @@ static int f2fs_submit_page_read(struct inode *inode, struct page *page,
 
 	if (f2fs_may_encrypt_bio(inode, NULL))
 		fscrypt_set_ice_dun(inode, bio, PG_DUN(inode, page));
-
-	/* wait for GCed page writeback via META_MAPPING */
-	f2fs_wait_on_block_writeback(inode, blkaddr);
 
 	if (bio_add_page(bio, page, PAGE_SIZE, 0) < PAGE_SIZE) {
 		bio_put(bio);
@@ -906,10 +906,6 @@ static int __allocate_data_block(struct dnode_of_data *dn, int seg_type)
 	if (unlikely(is_inode_flag_set(dn->inode, FI_NO_ALLOC)))
 		return -EPERM;
 
-	err = get_node_info(sbi, dn->nid, &ni);
-	if (err)
-		return err;
-
 	dn->data_blkaddr = datablock_addr(dn->inode,
 				dn->node_page, dn->ofs_in_node);
 	if (dn->data_blkaddr == NEW_ADDR)
@@ -919,6 +915,7 @@ static int __allocate_data_block(struct dnode_of_data *dn, int seg_type)
 		return err;
 
 alloc:
+	get_node_info(sbi, dn->nid, &ni);
 	set_summary(&sum, dn->nid, dn->ofs_in_node, ni.version);
 
 	allocate_data_block(sbi, NULL, dn->data_blkaddr, &dn->data_blkaddr,
@@ -1315,12 +1312,7 @@ static int f2fs_xattr_fiemap(struct inode *inode,
 		if (!page)
 			return -ENOMEM;
 
-		err = get_node_info(sbi, inode->i_ino, &ni);
-		if (err) {
-			f2fs_put_page(page, 1);
-			return err;
-		}
-
+		get_node_info(sbi, inode->i_ino, &ni);
 
 		phys = (__u64)blk_to_logical(inode, ni.blk_addr);
 		offset = offsetof(struct f2fs_inode, i_addr) +
@@ -1347,11 +1339,7 @@ static int f2fs_xattr_fiemap(struct inode *inode,
 		if (!page)
 			return -ENOMEM;
 
-		err = get_node_info(sbi, xnid, &ni);
-		if (err) {
-			f2fs_put_page(page, 1);
-			return err;
-		}
+		get_node_info(sbi, xnid, &ni);
 
 		phys = (__u64)blk_to_logical(inode, ni.blk_addr);
 		len = inode->i_sb->s_blocksize;
@@ -1574,12 +1562,6 @@ submit_and_realloc:
 			if (bio_encrypted)
 				fscrypt_set_ice_dun(inode, bio, dun);
 		}
-		/*
-		 * If the page is under writeback, we need to wait for
-		 * its completion to see the correct decrypted data.
-		 */
-		f2fs_wait_on_block_writeback(inode, block_nr);
-
 		if (bio_add_page(bio, page, blocksize, 0) < blocksize)
 			goto submit_and_realloc;
 
@@ -1646,7 +1628,7 @@ static int encrypt_one_page(struct f2fs_io_info *fio)
 		return 0;
 
 	/* wait for GCed page writeback via META_MAPPING */
-	f2fs_wait_on_block_writeback(inode, fio->old_blkaddr);
+	f2fs_wait_on_block_writeback(fio->sbi, fio->old_blkaddr);
 
 retry_encrypt:
 	if (fscrypt_using_hardware_encryption(inode))
@@ -1757,7 +1739,6 @@ int do_write_data_page(struct f2fs_io_info *fio)
 	struct inode *inode = page->mapping->host;
 	struct dnode_of_data dn;
 	struct extent_info ei = {0,0,0};
-	struct node_info ni;
 	bool ipu_force = false;
 	int err = 0;
 
@@ -1816,12 +1797,6 @@ got_it:
 		}
 		fio->need_lock = LOCK_REQ;
 	}
-
-	err = get_node_info(fio->sbi, dn.nid, &ni);
-	if (err)
-		goto out_writepage;
-
-	fio->version = ni.version;
 
 	err = encrypt_one_page(fio);
 	if (err)
@@ -2395,6 +2370,10 @@ repeat:
 	}
 
 	f2fs_wait_on_page_writeback(page, DATA, false);
+
+	/* wait for GCed page writeback via META_MAPPING */
+	if (f2fs_post_read_required(inode))
+		f2fs_wait_on_block_writeback(sbi, blkaddr);
 
 	if (len == PAGE_SIZE || PageUptodate(page))
 		return 0;
