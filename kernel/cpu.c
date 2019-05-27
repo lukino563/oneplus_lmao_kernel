@@ -2379,7 +2379,9 @@ EXPORT_SYMBOL(__cpu_isolated_mask);
  * little and CPUs 4-7 would be big).
  */
 #define LITTLE_CPU_MASK ((1UL << (NR_CPUS / 2)) - 1)
-#define BIG_CPU_MASK    (((1UL << NR_CPUS) - 1) & ~LITTLE_CPU_MASK)
+#define BIG_CPU_MASK    (((1UL << NR_CPUS - 1) - 1) & ~LITTLE_CPU_MASK)
+#define GOLD_CPU_MASK	((((1UL << NR_CPUS) - 1) & ~LITTLE_CPU_MASK) & ~BIG_CPU_MASK)
+
 static const unsigned long little_cluster_cpus = LITTLE_CPU_MASK;
 const struct cpumask *const cpu_lp_mask = to_cpumask(&little_cluster_cpus);
 EXPORT_SYMBOL(cpu_lp_mask);
@@ -2387,6 +2389,10 @@ EXPORT_SYMBOL(cpu_lp_mask);
 static const unsigned long big_cluster_cpus = BIG_CPU_MASK;
 const struct cpumask *const cpu_perf_mask = to_cpumask(&big_cluster_cpus);
 EXPORT_SYMBOL(cpu_perf_mask);
+
+static const unsigned long gold_cluster_cpus = GOLD_CPU_MASK;
+const struct cpumask *const cpu_gold_mask = to_cpumask(&gold_cluster_cpus);
+EXPORT_SYMBOL(cpu_gold_mask);
 
 void init_cpu_present(const struct cpumask *src)
 {
