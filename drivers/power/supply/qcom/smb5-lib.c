@@ -6407,7 +6407,7 @@ static void op_get_aicl_work(struct work_struct *work)
 
 #define NORMAL_CHECK_INTERVAL 300 /*ms*/
 #define FAST_CHECK_INTERVAL 100 /*ms*/
-#define HIGH_TEMP_SHORT_CHECK_TIMEOUT 1000 /*ms*/
+#define HIGH_TEMP_SHORT_CHECK_TIMEOUT 1500 /*ms*/
 
 static void op_connect_temp_check_work(struct work_struct *work)
 {
@@ -6482,9 +6482,8 @@ static void op_connect_temp_check_work(struct work_struct *work)
 					chg->connecter_temp);
 			op_disconnect_vbus(chg, true);
 			return;
-		} else if (((interval_temp >= 10) && (interval_temp < 15)) &&
-					(chg->connecter_temp >= 45)) {
-		/* 10<= <15*/
+		} else if (chg->connecter_temp >= 35) {
+		/* >= 35 enter*/
 			if (chg->count_run <= chg->count_total) {
 			/*time out count*/
 				if (chg->count_run == 0)
@@ -6494,8 +6493,14 @@ static void op_connect_temp_check_work(struct work_struct *work)
 				if (chg->count_run > 0) {
 					chg->current_temp = chg->connecter_temp;
 					if ((chg->current_temp - chg->pre_temp)
-						>= 3)
+						>= 3) {
 						chg->connector_short = true;
+						pr_info("cout_run=%d,short=%d\n",
+							chg->count_run,
+							chg->connector_short);
+						op_disconnect_vbus(chg, true);
+						return;
+					}
 				}
 
 				chg->count_run++;/*count ++*/
