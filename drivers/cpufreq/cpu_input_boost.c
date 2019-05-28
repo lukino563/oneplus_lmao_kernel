@@ -274,7 +274,9 @@ static void update_gpu_boost(struct boost_drv *b, int freq)
 		level=7;
 	if (freq==180)
 		level=8;
+	mutex_lock(&b->gpu_device->mutex);
 	b->gpu_pwr->min_pwrlevel=level;
+	mutex_unlock(&b->gpu_device->mutex);
 }
 
 static void input_stune_boost_worker(struct work_struct *work)
