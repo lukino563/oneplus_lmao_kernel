@@ -2,15 +2,20 @@
 /*
  * Copyright (C) 2018-2019 Sultan Alsawaf <sultan@kerneltoast.com>.
  */
+// Copyright (C) 2019 GPU input boost, stune boost, Erik Müller <pappschlumpf@xda>
 
 #define pr_fmt(fmt) "cpu_input_boost: " fmt
 
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
+#include <linux/msm_drm_notify.h>
 #include <linux/input.h>
 #include <linux/kthread.h>
-#include <linux/msm_drm_notify.h>
 #include <linux/slab.h>
+#include <linux/moduleparam.h>
+#include "../gpu/msm/kgsl.h"
+#include "../gpu/msm/kgsl_pwrscale.h"
+#include "../gpu/msm/kgsl_device.h"
 #include <linux/version.h>
 
 /* The sched_param struct is located elsewhere in newer kernels */
@@ -18,44 +23,163 @@
 #include <uapi/linux/sched/types.h>
 #endif
 
-/* Available bits for boost state */
-#define SCREEN_OFF		BIT(0)
-#define INPUT_BOOST		BIT(1)
-#define MAX_BOOST		BIT(2)
+static unsigned int input_boost_freq_lp __read_mostly = CONFIG_INPUT_BOOST_FREQ_LP;
+static unsigned int input_boost_freq_hp __read_mostly = CONFIG_INPUT_BOOST_FREQ_PERF;
+static unsigned int flex_boost_freq_lp __read_mostly = CONFIG_FLEX_BOOST_FREQ_LP;
+static unsigned int flex_boost_freq_hp __read_mostly = CONFIG_FLEX_BOOST_FREQ_PERF;
+static unsigned int max_boost_freq_lp __read_mostly = CONFIG_MAX_BOOST_FREQ_LP;
+static unsigned int max_boost_freq_hp __read_mostly = CONFIG_MAX_BOOST_FREQ_PERF;
+static unsigned int remove_input_boost_freq_lp __read_mostly = CONFIG_REMOVE_INPUT_BOOST_FREQ_LP;
+static unsigned int remove_input_boost_freq_perf __read_mostly = CONFIG_REMOVE_INPUT_BOOST_FREQ_PERF;
+static unsigned int gpu_boost_freq __read_mostly = CONFIG_GPU_BOOST_FREQ;
+static unsigned int gpu_min_freq __read_mostly = CONFIG_GPU_MIN_FREQ;
+static unsigned short input_boost_duration __read_mostly = CONFIG_INPUT_BOOST_DURATION_MS;
+static unsigned short flex_boost_duration __read_mostly = CONFIG_FLEX_BOOST_DURATION_MS;
+static  unsigned int input_thread_prio __read_mostly = CONFIG_INPUT_THREAD_PRIORITY;
+static unsigned int gpu_boost_extender_ms __read_mostly = CONFIG_GPU_BOOST_EXTENDER_MS;
+static bool little_only __read_mostly = false;
 
-struct boost_drv {
-	struct delayed_work input_unboost;
-	struct delayed_work max_unboost;
-	struct notifier_block cpu_notif;
-	struct notifier_block msm_drm_notif;
-	wait_queue_head_t boost_waitq;
-	atomic64_t max_boost_expires;
-	atomic_t state;
+#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+static short dynamic_stune_boost __read_mostly = 20;
+static short input_stune_boost_offset __read_mostly = CONFIG_INPUT_BOOST_STUNE_OFFSET;
+static short max_stune_boost_offset __read_mostly = CONFIG_MAX_BOOST_STUNE_OFFSET;
+static short flex_stune_boost_offset __read_mostly = CONFIG_FLEX_BOOST_STUNE_OFFSET;
+static unsigned int stune_boost_extender_ms __read_mostly = CONFIG_STUNE_BOOST_EXTENDER_MS;
+static unsigned int max_stune_boost_extender_ms __read_mostly = CONFIG_MAX_STUNE_BOOST_EXTENDER_MS;
+
+module_param(dynamic_stune_boost, short, 0644);
+module_param(input_stune_boost_offset, short, 0644);
+module_param(max_stune_boost_offset, short, 0644);
+module_param(flex_stune_boost_offset, short, 0644);
+module_param(gpu_boost_freq, uint, 0644);
+module_param(gpu_min_freq, uint, 0644);
+module_param(max_stune_boost_extender_ms, uint, 0644);
+module_param(stune_boost_extender_ms, uint, 0644);
+#endif
+
+module_param(input_boost_freq_lp, uint, 0644);
+module_param(input_boost_freq_hp, uint, 0644);
+module_param(flex_boost_freq_lp, uint, 0644);
+module_param(flex_boost_freq_hp, uint, 0644);
+module_param(input_boost_duration, short, 0644);
+module_param(flex_boost_duration, short, 0644);
+module_param(remove_input_boost_freq_lp, uint, 0644);
+module_param(remove_input_boost_freq_perf, uint, 0644);
+module_param(max_boost_freq_lp, uint, 0644);
+module_param(max_boost_freq_hp, uint, 0644);
+module_param(gpu_boost_extender_ms, uint, 0644);
+module_param(little_only, bool, 0644);
+
+enum {
+	SCREEN_OFF,
+	INPUT_BOOST,
+	FLEX_BOOST,
+	CLUSTER1_BOOST,
+	CLUSTER2_BOOST,
+	CLUSTER1_WAKE_BOOST,
+	CLUSTER2_WAKE_BOOST,
+	INPUT_STUNE_BOOST,
+	MAX_STUNE_BOOST,
+	FLEX_STUNE_BOOST
 };
 
-static struct boost_drv *boost_drv_g __read_mostly;
+struct boost_drv {
+	struct workqueue_struct *wq_i;
+	struct workqueue_struct *wq_f;
+	struct workqueue_struct *wq_cl1;
+	struct workqueue_struct *wq_cl2;
+	struct workqueue_struct *wq_istu;
+	struct workqueue_struct *wq_mstu;
+	struct workqueue_struct *wq_gpu;
+	struct delayed_work input_unboost;
+	struct delayed_work flex_unboost;
+	struct delayed_work cluster1_unboost;
+	struct delayed_work cluster2_unboost;
+	struct delayed_work input_stune_unboost;
+	struct delayed_work max_stune_unboost;
+	struct delayed_work gpu_unboost;
+	struct notifier_block cpu_notif;
+	struct notifier_block msm_drm_notif;
+	struct kgsl_device *gpu_device;
+	struct kgsl_pwrctrl *gpu_pwr;
+	int input_stune_slot;
+	int max_stune_slot;
+	int flex_stune_slot;
+	wait_queue_head_t boost_waitq;
+	unsigned long state;
+	unsigned long stune_state;
+	//atomic64_t cluster1_boost_expires;
+	//atomic64_t cluster2_boost_expires;
+};
 
-static u32 get_boost_freq(struct boost_drv *b, u32 cpu)
+static void input_unboost_worker(struct work_struct *work);
+static void flex_unboost_worker(struct work_struct *work);
+static void cluster1_unboost_worker(struct work_struct *work);
+static void cluster2_unboost_worker(struct work_struct *work);
+static void input_stune_unboost_worker(struct work_struct *work);
+static void max_stune_unboost_worker(struct work_struct *work);
+static void gpu_unboost_worker(struct work_struct *work);
+
+static struct boost_drv boost_drv_g __read_mostly = {
+	.input_unboost = __DELAYED_WORK_INITIALIZER(boost_drv_g.input_unboost,
+						    input_unboost_worker, 0),
+	.flex_unboost = __DELAYED_WORK_INITIALIZER(boost_drv_g.flex_unboost,
+						  flex_unboost_worker, 0),
+	.cluster1_unboost = __DELAYED_WORK_INITIALIZER(boost_drv_g.cluster1_unboost,
+						  cluster1_unboost_worker, 0),
+	.cluster2_unboost = __DELAYED_WORK_INITIALIZER(boost_drv_g.cluster2_unboost,
+						  cluster2_unboost_worker, 0),
+	.input_stune_unboost = __DELAYED_WORK_INITIALIZER(boost_drv_g.input_stune_unboost,
+						  input_stune_unboost_worker, 0),
+	.max_stune_unboost = __DELAYED_WORK_INITIALIZER(boost_drv_g.max_stune_unboost,
+						  max_stune_unboost_worker, 0),
+	.gpu_unboost = __DELAYED_WORK_INITIALIZER(boost_drv_g.gpu_unboost,
+						  gpu_unboost_worker, 0),
+	.boost_waitq = __WAIT_QUEUE_HEAD_INITIALIZER(boost_drv_g.boost_waitq)
+};
+
+static unsigned int get_input_boost_freq(struct cpufreq_policy *policy)
+{
+	unsigned int freq;
+
+	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
+		freq = input_boost_freq_lp;
+	else
+		freq = input_boost_freq_hp;
+
+	return min(freq, policy->max);
+}
+
+static unsigned int get_max_boost_freq(struct cpufreq_policy *policy)
+{
+	unsigned int freq;
+
+	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
+		freq = max_boost_freq_lp;
+	else
+		freq = max_boost_freq_hp;
+
+	return min(freq, policy->max);
+}
+
+static unsigned int get_flex_boost_freq(struct cpufreq_policy *policy)
+{
+	unsigned int freq;
+
+	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
+		freq = flex_boost_freq_lp;
+	else
+		freq = flex_boost_freq_hp;
+
+	return min(freq, policy->max);
+}
+
+static unsigned int get_min_freq(struct boost_drv *b, u32 cpu)
 {
 	if (cpumask_test_cpu(cpu, cpu_lp_mask))
-		return CONFIG_INPUT_BOOST_FREQ_LP;
+		return remove_input_boost_freq_lp;
 
-	return CONFIG_INPUT_BOOST_FREQ_PERF;
-}
-
-static u32 get_boost_state(struct boost_drv *b)
-{
-	return atomic_read(&b->state);
-}
-
-static void set_boost_bit(struct boost_drv *b, u32 state)
-{
-	atomic_or(state, &b->state);
-}
-
-static void clear_boost_bit(struct boost_drv *b, u32 state)
-{
-	atomic_andnot(state, &b->state);
+	return remove_input_boost_freq_perf;
 }
 
 static void update_online_cpu_policy(void)
@@ -68,140 +192,382 @@ static void update_online_cpu_policy(void)
 	cpufreq_update_policy(cpu);
 	cpu = cpumask_first_and(cpu_perf_mask, cpu_online_mask);
 	cpufreq_update_policy(cpu);
+	cpu = cpumask_first_and(cpu_gold_mask, cpu_online_mask);
+	cpufreq_update_policy(cpu);
 	put_online_cpus();
+}
+
+static void update_stune_boost(struct boost_drv *b, int BIT, int level,
+			    int *slot)
+{
+	if (level && !test_bit(BIT, &b->stune_state)) {
+		if (!do_stune_boost("top-app", level, slot))
+			set_bit(BIT, &b->stune_state);
+	}
+}
+
+static void clear_stune_boost(struct boost_drv *b, u32 BIT, int slot)
+{
+	if (test_bit(BIT, &b->stune_state)) {
+		reset_stune_boost("top-app", slot);
+		clear_bit(BIT, &b->stune_state);
+	}
+}
+
+static void update_gpu_boost(struct boost_drv *b, int freq)
+{
+	int level;
+	if (freq==0) return;
+	if (freq==345)
+		level=4;
+	if (freq==257)
+		level=5;
+	b->gpu_pwr->min_pwrlevel=level;
 }
 
 static void __cpu_input_boost_kick(struct boost_drv *b)
 {
-	if (get_boost_state(b) & SCREEN_OFF)
-		return;
-
-	set_boost_bit(b, INPUT_BOOST);
-	wake_up(&b->boost_waitq);
-	mod_delayed_work(system_unbound_wq, &b->input_unboost,
-			 msecs_to_jiffies(CONFIG_INPUT_BOOST_DURATION_MS));
+	if (!mod_delayed_work(b->wq_istu, &b->input_stune_unboost,
+			msecs_to_jiffies(input_boost_duration+stune_boost_extender_ms)))
+		update_stune_boost(b, INPUT_STUNE_BOOST, dynamic_stune_boost+input_stune_boost_offset,
+				&b->input_stune_slot);	
+	if (!mod_delayed_work(b->wq_i, &b->input_unboost,
+			msecs_to_jiffies(input_boost_duration))) {
+		set_bit(INPUT_BOOST, &b->state);
+		wake_up(&b->boost_waitq);
+	}
+	if (!mod_delayed_work(b->wq_gpu, &b->gpu_unboost,
+			msecs_to_jiffies(input_boost_duration+gpu_boost_extender_ms)))
+		update_gpu_boost(b, gpu_boost_freq);
 }
 
-void cpu_input_boost_kick(void)
-{
-	struct boost_drv *b = boost_drv_g;
-
-	if (!b)
-		return;
-
-	__cpu_input_boost_kick(b);
-}
-
-static void __cpu_input_boost_kick_max(struct boost_drv *b,
+static void __cpu_input_boost_kick_cluster1(struct boost_drv *b,
 				       unsigned int duration_ms)
 {
-	unsigned long boost_jiffies = msecs_to_jiffies(duration_ms);
+	/*unsigned long boost_jiffies = msecs_to_jiffies(duration_ms);
 	unsigned long curr_expires, new_expires;
 
-	if (get_boost_state(b) & SCREEN_OFF)
-		return;
-
 	do {
-		curr_expires = atomic64_read(&b->max_boost_expires);
+		curr_expires = atomic64_read(&b->cluster1_boost_expires);
 		new_expires = jiffies + boost_jiffies;
 
-		/* Skip this boost if there's a longer boost in effect */
 		if (time_after(curr_expires, new_expires))
 			return;
-	} while (atomic64_cmpxchg(&b->max_boost_expires, curr_expires,
-				  new_expires) != curr_expires);
+	} while (atomic64_cmpxchg(&b->cluster1_boost_expires, curr_expires,
+				  new_expires) != curr_expires);*/
 
-	set_boost_bit(b, MAX_BOOST);
-	wake_up(&b->boost_waitq);
-	mod_delayed_work(system_unbound_wq, &b->max_unboost, boost_jiffies);
+	if (!mod_delayed_work(b->wq_cl1, &b->cluster1_unboost,
+			      msecs_to_jiffies(duration_ms))) {
+		set_bit(CLUSTER1_BOOST, &b->state);
+		wake_up(&b->boost_waitq);
+	}
+	if (!mod_delayed_work(b->wq_mstu, &b->max_stune_unboost,
+			msecs_to_jiffies(duration_ms+max_stune_boost_extender_ms)))
+		update_stune_boost(b, MAX_STUNE_BOOST, dynamic_stune_boost+max_stune_boost_offset,
+				&b->max_stune_slot);
 }
 
-void cpu_input_boost_kick_max(unsigned int duration_ms)
+static void __cpu_input_boost_kick_cluster2(struct boost_drv *b,
+				       unsigned int duration_ms)
 {
-	struct boost_drv *b = boost_drv_g;
+	/*unsigned long boost_jiffies = msecs_to_jiffies(duration_ms);
+	unsigned long curr_expires, new_expires;
 
-	if (!b)
+	do {
+		curr_expires = atomic64_read(&b->cluster2_boost_expires);
+		new_expires = jiffies + boost_jiffies;
+
+		if (time_after(curr_expires, new_expires))
+			return;
+	} while (atomic64_cmpxchg(&b->cluster2_boost_expires, curr_expires,
+				  new_expires) != curr_expires);*/
+
+	if (!mod_delayed_work(b->wq_cl2, &b->cluster2_unboost,
+			msecs_to_jiffies(duration_ms))) {
+		set_bit(CLUSTER2_BOOST, &b->state);
+		wake_up(&b->boost_waitq);
+	}
+	if (!test_bit(CLUSTER1_BOOST, &b->state) || !test_bit(CLUSTER1_WAKE_BOOST, &b->state)) {
+		if (!mod_delayed_work(b->wq_mstu, &b->max_stune_unboost,
+				msecs_to_jiffies(duration_ms+max_stune_boost_extender_ms)))
+			update_stune_boost(b, MAX_STUNE_BOOST, dynamic_stune_boost+max_stune_boost_offset,
+					&b->max_stune_slot);
+	}
+}
+
+void cpu_input_boost_kick_cluster1(unsigned int duration_ms)
+{
+	struct boost_drv *b = &boost_drv_g;
+
+	if (duration_ms == 0)
 		return;
 
-	__cpu_input_boost_kick_max(b, duration_ms);
+	if (test_bit(SCREEN_OFF, &b->state))
+		return;
+	
+	__cpu_input_boost_kick_cluster1(b, duration_ms);
+}
+
+void cpu_input_boost_kick_cluster2(unsigned int duration_ms)
+{
+	struct boost_drv *b = &boost_drv_g;
+
+	if (little_only || duration_ms == 0)
+		return;
+
+	if (test_bit(SCREEN_OFF, &b->state))
+		return;
+
+	__cpu_input_boost_kick_cluster2(b, duration_ms);
+}
+
+static void __cpu_input_boost_kick_cluster1_wake(struct boost_drv *b,
+				       unsigned int duration_ms)
+{
+	/*unsigned long boost_jiffies = msecs_to_jiffies(duration_ms);
+	unsigned long curr_expires, new_expires;
+
+	do {
+		curr_expires = atomic64_read(&b->cluster1_boost_expires);
+		new_expires = jiffies + boost_jiffies;
+
+		if (time_after(curr_expires, new_expires))
+			return;
+	} while (atomic64_cmpxchg(&b->cluster1_boost_expires, curr_expires,
+				  new_expires) != curr_expires);*/
+
+	if (!mod_delayed_work(b->wq_cl1, &b->cluster1_unboost,
+			msecs_to_jiffies(duration_ms))) {
+		set_bit(CLUSTER1_WAKE_BOOST, &b->state);
+		wake_up(&b->boost_waitq);
+	}
+	if (!mod_delayed_work(b->wq_mstu, &b->max_stune_unboost,
+			msecs_to_jiffies(duration_ms+max_stune_boost_extender_ms)))
+		update_stune_boost(b, MAX_STUNE_BOOST, dynamic_stune_boost+max_stune_boost_offset,
+				&b->max_stune_slot);	
+}
+
+static void __cpu_input_boost_kick_cluster2_wake(struct boost_drv *b,
+				       unsigned int duration_ms)
+{
+	/*unsigned long boost_jiffies = msecs_to_jiffies(duration_ms);
+	unsigned long curr_expires, new_expires;
+
+	do {
+		curr_expires = atomic64_read(&b->cluster2_boost_expires);
+		new_expires = jiffies + boost_jiffies;
+
+		if (time_after(curr_expires, new_expires))
+			return;
+	} while (atomic64_cmpxchg(&b->cluster2_boost_expires, curr_expires,
+				  new_expires) != curr_expires);*/
+
+	if (!mod_delayed_work(b->wq_cl2, &b->cluster2_unboost,
+			msecs_to_jiffies(duration_ms))) {
+		set_bit(CLUSTER2_WAKE_BOOST, &b->state);
+		wake_up(&b->boost_waitq);
+	}
+	if (!test_bit(CLUSTER1_WAKE_BOOST, &b->state) || !test_bit(CLUSTER1_BOOST, &b->state)) {
+		if (!mod_delayed_work(b->wq_mstu, &b->max_stune_unboost,
+				msecs_to_jiffies(duration_ms+max_stune_boost_extender_ms)))
+			update_stune_boost(b, MAX_STUNE_BOOST, dynamic_stune_boost+max_stune_boost_offset,
+					&b->max_stune_slot);
+	}
+}
+
+void cpu_input_boost_kick_cluster1_wake(unsigned int duration_ms)
+{
+	struct boost_drv *b = &boost_drv_g;
+
+	if (duration_ms == 0)
+		return;
+
+	if (!test_bit(SCREEN_OFF, &b->state))
+		return;
+
+	__cpu_input_boost_kick_cluster1_wake(b, duration_ms);
+}
+
+void cpu_input_boost_kick_cluster2_wake(unsigned int duration_ms)
+{
+	struct boost_drv *b = &boost_drv_g;
+
+	if (little_only || duration_ms == 0)
+		return;
+
+	if (!test_bit(SCREEN_OFF, &b->state))
+		return;
+
+	__cpu_input_boost_kick_cluster2_wake(b, duration_ms);
+}
+
+static void __cpu_input_boost_kick_flex(struct boost_drv *b)
+{
+	if (!mod_delayed_work(b->wq_f, &b->flex_unboost,
+			msecs_to_jiffies(flex_boost_duration))) {
+		set_bit(FLEX_BOOST, &b->state);
+		wake_up(&b->boost_waitq);
+	}
+	if (dynamic_stune_boost+flex_stune_boost_offset > 0)
+			update_stune_boost(b, FLEX_STUNE_BOOST, dynamic_stune_boost+flex_stune_boost_offset,
+				&b->flex_stune_slot);
+}
+
+void cpu_input_boost_kick_flex(void)
+{
+	struct boost_drv *b = &boost_drv_g;
+	
+	if (test_bit(SCREEN_OFF, &b->state))
+		return;
+
+	__cpu_input_boost_kick_flex(b);
 }
 
 static void input_unboost_worker(struct work_struct *work)
 {
 	struct boost_drv *b = container_of(to_delayed_work(work),
 					   typeof(*b), input_unboost);
-
-	clear_boost_bit(b, INPUT_BOOST);
+	
+	clear_bit(INPUT_BOOST, &b->state);
 	wake_up(&b->boost_waitq);
 }
 
-static void max_unboost_worker(struct work_struct *work)
+static void cluster1_unboost_worker(struct work_struct *work)
 {
 	struct boost_drv *b = container_of(to_delayed_work(work),
-					   typeof(*b), max_unboost);
+					   typeof(*b), cluster1_unboost);
 
-	clear_boost_bit(b, MAX_BOOST);
+	clear_bit(CLUSTER1_WAKE_BOOST, &b->state);
+	clear_bit(CLUSTER1_BOOST, &b->state);
 	wake_up(&b->boost_waitq);
+}
+
+static void cluster2_unboost_worker(struct work_struct *work)
+{
+	struct boost_drv *b = container_of(to_delayed_work(work),
+					   typeof(*b), cluster2_unboost);
+	
+	clear_bit(CLUSTER2_WAKE_BOOST, &b->state);
+	clear_bit(CLUSTER2_BOOST, &b->state);
+	wake_up(&b->boost_waitq);
+}
+
+static void flex_unboost_worker(struct work_struct *work)
+{
+	struct boost_drv *b = container_of(to_delayed_work(work),
+					   typeof(*b), flex_unboost);
+
+	clear_bit(FLEX_BOOST, &b->state);
+#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	clear_stune_boost(b, FLEX_STUNE_BOOST, b->flex_stune_slot);
+#endif
+	wake_up(&b->boost_waitq);
+}
+
+static void input_stune_unboost_worker(struct work_struct *work)
+{
+	struct boost_drv *b = container_of(to_delayed_work(work),
+					   typeof(*b), input_stune_unboost);
+
+#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	clear_stune_boost(b, INPUT_STUNE_BOOST, b->input_stune_slot);
+#endif
+}
+
+static void max_stune_unboost_worker(struct work_struct *work)
+{
+	struct boost_drv *b = container_of(to_delayed_work(work),
+					   typeof(*b), max_stune_unboost);
+
+#ifdef CONFIG_DYNAMIC_STUNE_BOOST
+	clear_stune_boost(b, MAX_STUNE_BOOST, b->max_stune_slot);
+#endif
+}
+
+static void gpu_unboost_worker(struct work_struct *work)
+{
+	struct boost_drv *b = container_of(to_delayed_work(work),
+					   typeof(*b), gpu_unboost);
+
+	update_gpu_boost(b, gpu_min_freq);
 }
 
 static int cpu_boost_thread(void *data)
 {
-	static const struct sched_param sched_max_rt_prio = {
-		.sched_priority = MAX_RT_PRIO - 1
-	};
+	static struct sched_param sched_max_rt_prio;
 	struct boost_drv *b = data;
-	u32 old_state = 0;
+	unsigned long old_state = 0;
+
+	if (input_thread_prio == 99)
+ 		sched_max_rt_prio.sched_priority = MAX_RT_PRIO - 1;
+	else 
+		sched_max_rt_prio.sched_priority = input_thread_prio;
 
 	sched_setscheduler_nocheck(current, SCHED_FIFO, &sched_max_rt_prio);
 
 	while (!kthread_should_stop()) {
-		u32 curr_state;
+		unsigned long curr_state;
 
-		wait_event_interruptible(b->boost_waitq,
-			(curr_state = get_boost_state(b)) != old_state ||
+		wait_event(b->boost_waitq,
+			(curr_state = READ_ONCE(b->state)) != old_state ||
 			kthread_should_stop());
-
 		old_state = curr_state;
 		update_online_cpu_policy();
 	}
-
 	return 0;
 }
 
-static int cpu_notifier_cb(struct notifier_block *nb,
-			   unsigned long action, void *data)
+static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
+			   void *data)
 {
 	struct boost_drv *b = container_of(nb, typeof(*b), cpu_notif);
 	struct cpufreq_policy *policy = data;
-	u32 boost_freq, state;
+	unsigned int min_freq;
 
 	if (action != CPUFREQ_ADJUST)
 		return NOTIFY_OK;
 
-	state = get_boost_state(b);
+	if (test_bit(CLUSTER1_WAKE_BOOST, &b->state) && (policy->cpu < 4)) {
+		policy->min = get_max_boost_freq(policy);
+		return NOTIFY_OK;
+	}
+	if (test_bit(CLUSTER2_WAKE_BOOST, &b->state) && (policy->cpu > 3) && (policy->cpu < 7)) {
+		policy->min = get_max_boost_freq(policy);
+		return NOTIFY_OK;
+	}
 
 	/* Unboost when the screen is off */
-	if (state & SCREEN_OFF) {
-		policy->min = policy->cpuinfo.min_freq;
+	if (test_bit(SCREEN_OFF, &b->state)) {
+		min_freq = get_min_freq(b, policy->cpu);
+		policy->min = max(policy->cpuinfo.min_freq, min_freq);
 		return NOTIFY_OK;
 	}
 
 	/* Boost CPU to max frequency for max boost */
-	if (state & MAX_BOOST) {
-		policy->min = policy->max;
+	if (test_bit(CLUSTER1_BOOST, &b->state) && (policy->cpu < 4)) {
+		policy->min = get_max_boost_freq(policy);
+		return NOTIFY_OK;
+	}
+	if (test_bit(CLUSTER2_BOOST, &b->state) && (policy->cpu > 3) && (policy->cpu < 7)) {
+		policy->min = get_max_boost_freq(policy);
 		return NOTIFY_OK;
 	}
 
-	/*
-	 * Boost to policy->max if the boost frequency is higher. When
-	 * unboosting, set policy->min to the absolute min freq for the CPU.
-	 */
-	if (state & INPUT_BOOST) {
-		boost_freq = get_boost_freq(b, policy->cpu);
-		policy->min = min(policy->max, boost_freq);
-	} else {
-		policy->min = policy->cpuinfo.min_freq;
+	if (test_bit(INPUT_BOOST, &b->state) || test_bit(FLEX_BOOST, &b->state)) {
+		if (test_bit(FLEX_BOOST, &b->state)) 
+			policy->min = get_flex_boost_freq(policy);
+
+		if (test_bit(INPUT_BOOST, &b->state)) {
+			if (policy->cpu < 4)
+				policy->min = get_input_boost_freq(policy);
+			if ((policy->cpu > 3) && (policy->cpu < 7) && !little_only)
+				policy->min = get_input_boost_freq(policy);
+		}
+		return NOTIFY_OK;
 	}
+
+	min_freq = get_min_freq(b, policy->cpu);
+	policy->min = max(policy->cpuinfo.min_freq, min_freq);
 
 	return NOTIFY_OK;
 }
@@ -213,19 +579,22 @@ static int msm_drm_notifier_cb(struct notifier_block *nb,
 	struct msm_drm_notifier *evdata = data;
 	int *blank = evdata->data;
 
+	clear_bit(SCREEN_OFF, &b->state);
+
 	/* Parse framebuffer blank events as soon as they occur */
 	if (action != MSM_DRM_EARLY_EVENT_BLANK)
 		return NOTIFY_OK;
 
 	/* Boost when the screen turns on and unboost when it turns off */
-	if (*blank == MSM_DRM_BLANK_UNBLANK) {
-		clear_boost_bit(b, SCREEN_OFF);
-		__cpu_input_boost_kick_max(b, CONFIG_WAKE_BOOST_DURATION_MS);
+	if (*blank == MSM_DRM_BLANK_UNBLANK_CUST) {	
+		cpu_input_boost_kick_cluster1_wake(500);
+		cpu_input_boost_kick_cluster2_wake(500);	
+		clear_bit(SCREEN_OFF, &b->state);
+		wake_up(&b->boost_waitq);
 	} else {
-		set_boost_bit(b, SCREEN_OFF);
+		set_bit(SCREEN_OFF, &b->state);
 		wake_up(&b->boost_waitq);
 	}
-
 	return NOTIFY_OK;
 }
 
@@ -314,24 +683,57 @@ static struct input_handler cpu_input_boost_input_handler = {
 static int __init cpu_input_boost_init(void)
 {
 	struct task_struct *boost_thread;
-	struct boost_drv *b;
+	struct boost_drv *b = &boost_drv_g;
 	int ret;
+	
+	b->wq_i = alloc_workqueue("cpu_input_boost_wq_i", WQ_HIGHPRI, 0);
+	if (!b->wq_i) {
+		ret = -ENOMEM;
+		return ret;
+	}
+	
+	b->wq_f = alloc_workqueue("cpu_input_boost_wq_f", WQ_HIGHPRI, 0);
+	if (!b->wq_f) {
+		ret = -ENOMEM;
+		return ret;
+	}
+	
+	b->wq_cl1 = alloc_workqueue("cpu_input_boost_wq_cl1", WQ_HIGHPRI, 0);
+	if (!b->wq_cl1) {
+		ret = -ENOMEM;
+		return ret;
+	}
+	
+	b->wq_cl2 = alloc_workqueue("cpu_input_boost_wq_cl2", WQ_HIGHPRI, 0);
+	if (!b->wq_cl2) {
+		ret = -ENOMEM;
+		return ret;
+	}
 
-	b = kzalloc(sizeof(*b), GFP_KERNEL);
-	if (!b)
-		return -ENOMEM;
+	b->wq_istu = alloc_workqueue("cpu_input_boost_wq_istu", WQ_HIGHPRI, 0);
+	if (!b->wq_istu) {
+		ret = -ENOMEM;
+		return ret;
+	}
 
-	INIT_DELAYED_WORK(&b->input_unboost, input_unboost_worker);
-	INIT_DELAYED_WORK(&b->max_unboost, max_unboost_worker);
-	init_waitqueue_head(&b->boost_waitq);
-	atomic64_set(&b->max_boost_expires, 0);
-	atomic_set(&b->state, 0);
+	b->wq_mstu = alloc_workqueue("cpu_input_boost_wq_mstu", WQ_HIGHPRI, 0);
+	if (!b->wq_mstu) {
+		ret = -ENOMEM;
+		return ret;
+	}
+
+	b->wq_gpu = alloc_workqueue("cpu_input_boost_wq_gpu", WQ_HIGHPRI, 0);
+	if (!b->wq_gpu) {
+		ret = -ENOMEM;
+		return ret;
+	}
 
 	b->cpu_notif.notifier_call = cpu_notifier_cb;
+	b->cpu_notif.priority = INT_MAX - 2;
 	ret = cpufreq_register_notifier(&b->cpu_notif, CPUFREQ_POLICY_NOTIFIER);
 	if (ret) {
 		pr_err("Failed to register cpufreq notifier, err: %d\n", ret);
-		goto free_b;
+		return ret;
 	}
 
 	cpu_input_boost_input_handler.private = b;
@@ -349,15 +751,17 @@ static int __init cpu_input_boost_init(void)
 		goto unregister_handler;
 	}
 
-	boost_thread = kthread_run(cpu_boost_thread, b, "cpu_boostd");
+	boost_thread = kthread_run_low_power(cpu_boost_thread, b, "cpu_boostd");
 	if (IS_ERR(boost_thread)) {
 		pr_err("Failed to start CPU boost thread, err: %ld\n",
 		       PTR_ERR(boost_thread));
 		goto unregister_drm_notif;
 	}
-
-	boost_drv_g = b;
-
+	
+	b->gpu_device = kgsl_get_device(KGSL_DEVICE_3D0);
+	if (IS_ERR_OR_NULL(b->gpu_device))
+		return 0;
+	b->gpu_pwr = &b->gpu_device->pwrctrl;
 	return 0;
 
 unregister_drm_notif:
@@ -366,8 +770,6 @@ unregister_handler:
 	input_unregister_handler(&cpu_input_boost_input_handler);
 unregister_cpu_notif:
 	cpufreq_unregister_notifier(&b->cpu_notif, CPUFREQ_POLICY_NOTIFIER);
-free_b:
-	kfree(b);
 	return ret;
 }
 late_initcall(cpu_input_boost_init);
