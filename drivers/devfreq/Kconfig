@@ -276,12 +276,6 @@ config DEVFREQ_BOOST
 
 if DEVFREQ_BOOST
 
-config FLEX_DEVFREQ_BOOST_DURATION_MS
-	int "Flex boost duration"
-	default "150"
-	help
-	  Flex boost duration in milliseconds for all boostable devices.
-
 config DEVFREQ_INPUT_BOOST_DURATION_MS
 	int "Input boost duration"
 	default "100"
@@ -299,11 +293,6 @@ config DEVFREQ_MSM_CPUBW_BOOST_FREQ
 	default "0"
 	help
 	  Boost frequency for the MSM DDR bus.
-
-config DEVFREQ_THREAD_PRIORITY
-	int "Input hread priority"
-	depends on DYNAMIC_STUNE_BOOST
-	default "25"
 
 endif
 
