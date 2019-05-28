@@ -275,6 +275,12 @@ config DEVFREQ_BOOST
 
 if DEVFREQ_BOOST
 
+config FLEX_DEVFREQ_BOOST_DURATION_MS
+	int "Flex boost duration"
+	default "150"
+	help
+	  Flex boost duration in milliseconds for all boostable devices.
+
 config DEVFREQ_INPUT_BOOST_DURATION_MS
 	int "Input boost duration"
 	default "100"
