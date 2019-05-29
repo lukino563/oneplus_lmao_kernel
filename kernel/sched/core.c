@@ -28,6 +28,12 @@
 #include <linux/syscalls.h>
 #include <linux/irq.h>
 #include <linux/delay.h>
+#ifdef CONFIG_CPU_INPUT_BOOST
+#include <linux/cpu_input_boost.h>
+#endif
+#ifdef CONFIG_DEVFREQ_BOOST
+#include <linux/devfreq_boost.h>
+#endif
 
 #include <linux/kthread.h>
 
@@ -2551,16 +2557,18 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	plist_node_init(&p->pushable_tasks, MAX_PRIO);
 	RB_CLEAR_NODE(&p->pushable_dl_tasks);
 #endif
+	put_cpu();
 #ifdef CONFIG_CPU_INPUT_BOOST
 	if (task_is_zygote(p)) {
 		if (p->cpu < 4)
 			cpu_input_boost_kick_cluster1(1000);
 		if ((p->cpu > 3) && (p->cpu < 7))
 			cpu_input_boost_kick_cluster2(1000);
+#ifdef CONFIG_DEVFREQ_BOOST
 		devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 1000);
+#endif
 	}
 #endif	
-	put_cpu();
 	return 0;
 }
 
