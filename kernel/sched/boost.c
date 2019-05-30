@@ -289,9 +289,7 @@ int sched_boost_handler(struct ctl_table *table, int write,
 	if (ret || !write)
 		goto done;
 
-	if (verify_boost_params(*data))
-		//_sched_set_boost(*data);
-	else
+	if (!verify_boost_params(*data))
 		ret = -EINVAL;
 
 done:
