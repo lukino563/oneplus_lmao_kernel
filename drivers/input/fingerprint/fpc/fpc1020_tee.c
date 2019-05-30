@@ -36,6 +36,8 @@
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
 #include <linux/input.h>
+#include <linux/devfreq_boost.h>
+#include <linux/cpu_input_boost.h>
 //#include <linux/wakelock.h>
 #include "../fingerprint_detect/fingerprint_detect.h"
 
@@ -345,6 +347,10 @@ static irqreturn_t fpc1020_irq_handler(int irq, void *handle)
 	if (atomic_read(&fpc1020->wakeup_enabled)) {
 		__pm_wakeup_event(&fpc1020->ttw_wl, FPC_TTW_HOLD_TIME);
 	}
+
+	cpu_input_boost_kick_cluster1_wake(500);
+	cpu_input_boost_kick_cluster2_wake(500);
+	devfreq_boost_kick_wake(DEVFREQ_MSM_CPUBW, 500);
 
 	sysfs_notify(&fpc1020->dev->kobj, NULL, dev_attr_irq.attr.name);
 
