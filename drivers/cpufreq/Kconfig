@@ -300,7 +300,7 @@ config INPUT_BOOST_STUNE_OFFSET
 
 config REMOVE_INPUT_BOOST_FREQ_LP
 	int "Low-power cluster return frequency"
-	default "0"
+	default "300000"
 	help
 	  This is the frequency the low-power cluster will fallback to
 	  once the boost is over. The default 0 will make the policy
@@ -310,7 +310,17 @@ config REMOVE_INPUT_BOOST_FREQ_LP
 
 config REMOVE_INPUT_BOOST_FREQ_PERF
 	int "Performance cluster return frequency"
-	default "0"
+	default "710400"
+	help
+	  This is the frequency the performance cluster will fallback to
+	  once the boost is over. The default 0 will make the policy
+	  use cpuinfo.min_freq. In case the device has some kind of quirk
+	  of using a higher than cpuinfo.min_freq (e.g. OnePlus 5/5T/6)
+	  this frequency will be used.
+
+config REMOVE_INPUT_BOOST_FREQ_GOLD
+	int "Performance cluster return frequency"
+	default "825600"
 	help
 	  This is the frequency the performance cluster will fallback to
 	  once the boost is over. The default 0 will make the policy
@@ -363,7 +373,7 @@ config MAX_BOOST_STUNE_OFFSET
 config  GPU_BOOST_FREQ
 	int "Boost GPU to given frequency"
 	depends on DYNAMIC_STUNE_BOOST
-	default '342'
+	default '345'
 	help
 	  Boosts GPU to given frequency
 
@@ -390,15 +400,21 @@ config INPUT_THREAD_PRIORITY
 
 config MAX_BOOST_FREQ_LP
 	int "Low-power cluster max-boost freq"
-	default "1766400"
+	default "1785600"
 	help
 	  Max-boost frequency for the low-power CPU cluster.
 
  config MAX_BOOST_FREQ_PERF
 	int "Performance cluster max-boost freq"
-	default "2803200"
+	default "2419200"
 	help
 	  Max-boost frequency for the performance CPU cluster.
+
+ config MAX_BOOST_FREQ_GOLD
+	int "Gold cluster max-boost freq"
+	default "2534400"
+	help
+	  Max-boost frequency for the Gold CPU cluster.
 
 config STUNE_BOOST_EXTENDER_MS
 	int "Foreground app schedtune max extend duration"

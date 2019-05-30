@@ -29,8 +29,10 @@ static unsigned int flex_boost_freq_lp __read_mostly = CONFIG_FLEX_BOOST_FREQ_LP
 static unsigned int flex_boost_freq_hp __read_mostly = CONFIG_FLEX_BOOST_FREQ_PERF;
 static unsigned int max_boost_freq_lp __read_mostly = CONFIG_MAX_BOOST_FREQ_LP;
 static unsigned int max_boost_freq_hp __read_mostly = CONFIG_MAX_BOOST_FREQ_PERF;
+static unsigned int max_boost_freq_gold __read_mostly = CONFIG_MAX_BOOST_FREQ_GOLD;
 static unsigned int remove_input_boost_freq_lp __read_mostly = CONFIG_REMOVE_INPUT_BOOST_FREQ_LP;
 static unsigned int remove_input_boost_freq_perf __read_mostly = CONFIG_REMOVE_INPUT_BOOST_FREQ_PERF;
+static unsigned int remove_input_boost_freq_gold __read_mostly = CONFIG_REMOVE_INPUT_BOOST_FREQ_GOLD;
 static unsigned int gpu_boost_freq __read_mostly = CONFIG_GPU_BOOST_FREQ;
 static unsigned int gpu_min_freq __read_mostly = CONFIG_GPU_MIN_FREQ;
 static unsigned short input_boost_duration __read_mostly = CONFIG_INPUT_BOOST_DURATION_MS;
@@ -38,6 +40,7 @@ static unsigned short flex_boost_duration __read_mostly = CONFIG_FLEX_BOOST_DURA
 static  unsigned int input_thread_prio __read_mostly = CONFIG_INPUT_THREAD_PRIORITY;
 static unsigned int gpu_boost_extender_ms __read_mostly = CONFIG_GPU_BOOST_EXTENDER_MS;
 static bool little_only __read_mostly = false;
+static bool boost_gold __read_mostly = true;
 
 #ifdef CONFIG_DYNAMIC_STUNE_BOOST
 static short dynamic_stune_boost __read_mostly = 20;
@@ -65,8 +68,10 @@ module_param(input_boost_duration, short, 0644);
 module_param(flex_boost_duration, short, 0644);
 module_param(remove_input_boost_freq_lp, uint, 0644);
 module_param(remove_input_boost_freq_perf, uint, 0644);
+module_param(remove_input_boost_freq_gold, uint, 0644);
 module_param(max_boost_freq_lp, uint, 0644);
 module_param(max_boost_freq_hp, uint, 0644);
+module_param(max_boost_freq_gold, uint, 0644);
 module_param(gpu_boost_extender_ms, uint, 0644);
 module_param(little_only, bool, 0644);
 
@@ -156,8 +161,9 @@ static unsigned int get_max_boost_freq(struct cpufreq_policy *policy)
 
 	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
 		freq = max_boost_freq_lp;
-	else
+	else if (cpumask_test_cpu(policy->cpu, cpu_perf_mask))
 		freq = max_boost_freq_hp;
+	else freq = max_boost_freq_gold;
 
 	return min(freq, policy->max);
 }
@@ -179,7 +185,10 @@ static unsigned int get_min_freq(struct boost_drv *b, u32 cpu)
 	if (cpumask_test_cpu(cpu, cpu_lp_mask))
 		return remove_input_boost_freq_lp;
 
-	return remove_input_boost_freq_perf;
+	if (cpumask_test_cpu(cpu, cpu_perf_mask))
+		return remove_input_boost_freq_perf;
+
+	return remove_input_boost_freq_gold;
 }
 
 static void update_online_cpu_policy(void)
@@ -219,9 +228,9 @@ static void update_gpu_boost(struct boost_drv *b, int freq)
 	int level;
 	if (freq==0) return;
 	if (freq==345)
-		level=4;
+		level=6;
 	if (freq==257)
-		level=5;
+		level=7;
 	b->gpu_pwr->min_pwrlevel=level;
 }
 
@@ -244,18 +253,6 @@ static void __cpu_input_boost_kick(struct boost_drv *b)
 static void __cpu_input_boost_kick_cluster1(struct boost_drv *b,
 				       unsigned int duration_ms)
 {
-	/*unsigned long boost_jiffies = msecs_to_jiffies(duration_ms);
-	unsigned long curr_expires, new_expires;
-
-	do {
-		curr_expires = atomic64_read(&b->cluster1_boost_expires);
-		new_expires = jiffies + boost_jiffies;
-
-		if (time_after(curr_expires, new_expires))
-			return;
-	} while (atomic64_cmpxchg(&b->cluster1_boost_expires, curr_expires,
-				  new_expires) != curr_expires);*/
-
 	if (!mod_delayed_work(b->wq_cl1, &b->cluster1_unboost,
 			      msecs_to_jiffies(duration_ms))) {
 		set_bit(CLUSTER1_BOOST, &b->state);
@@ -270,18 +267,6 @@ static void __cpu_input_boost_kick_cluster1(struct boost_drv *b,
 static void __cpu_input_boost_kick_cluster2(struct boost_drv *b,
 				       unsigned int duration_ms)
 {
-	/*unsigned long boost_jiffies = msecs_to_jiffies(duration_ms);
-	unsigned long curr_expires, new_expires;
-
-	do {
-		curr_expires = atomic64_read(&b->cluster2_boost_expires);
-		new_expires = jiffies + boost_jiffies;
-
-		if (time_after(curr_expires, new_expires))
-			return;
-	} while (atomic64_cmpxchg(&b->cluster2_boost_expires, curr_expires,
-				  new_expires) != curr_expires);*/
-
 	if (!mod_delayed_work(b->wq_cl2, &b->cluster2_unboost,
 			msecs_to_jiffies(duration_ms))) {
 		set_bit(CLUSTER2_BOOST, &b->state);
@@ -324,18 +309,6 @@ void cpu_input_boost_kick_cluster2(unsigned int duration_ms)
 static void __cpu_input_boost_kick_cluster1_wake(struct boost_drv *b,
 				       unsigned int duration_ms)
 {
-	/*unsigned long boost_jiffies = msecs_to_jiffies(duration_ms);
-	unsigned long curr_expires, new_expires;
-
-	do {
-		curr_expires = atomic64_read(&b->cluster1_boost_expires);
-		new_expires = jiffies + boost_jiffies;
-
-		if (time_after(curr_expires, new_expires))
-			return;
-	} while (atomic64_cmpxchg(&b->cluster1_boost_expires, curr_expires,
-				  new_expires) != curr_expires);*/
-
 	if (!mod_delayed_work(b->wq_cl1, &b->cluster1_unboost,
 			msecs_to_jiffies(duration_ms))) {
 		set_bit(CLUSTER1_WAKE_BOOST, &b->state);
@@ -350,18 +323,6 @@ static void __cpu_input_boost_kick_cluster1_wake(struct boost_drv *b,
 static void __cpu_input_boost_kick_cluster2_wake(struct boost_drv *b,
 				       unsigned int duration_ms)
 {
-	/*unsigned long boost_jiffies = msecs_to_jiffies(duration_ms);
-	unsigned long curr_expires, new_expires;
-
-	do {
-		curr_expires = atomic64_read(&b->cluster2_boost_expires);
-		new_expires = jiffies + boost_jiffies;
-
-		if (time_after(curr_expires, new_expires))
-			return;
-	} while (atomic64_cmpxchg(&b->cluster2_boost_expires, curr_expires,
-				  new_expires) != curr_expires);*/
-
 	if (!mod_delayed_work(b->wq_cl2, &b->cluster2_unboost,
 			msecs_to_jiffies(duration_ms))) {
 		set_bit(CLUSTER2_WAKE_BOOST, &b->state);
@@ -535,6 +496,10 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 		policy->min = get_max_boost_freq(policy);
 		return NOTIFY_OK;
 	}
+	if (test_bit(CLUSTER2_WAKE_BOOST, &b->state) &&  (policy->cpu  == 7) && boost_gold) {
+		policy->min = get_max_boost_freq(policy);
+		return NOTIFY_OK;
+	}
 
 	/* Unboost when the screen is off */
 	if (test_bit(SCREEN_OFF, &b->state)) {
@@ -552,10 +517,18 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 		policy->min = get_max_boost_freq(policy);
 		return NOTIFY_OK;
 	}
+	if (test_bit(CLUSTER2_BOOST, &b->state) &&  (policy->cpu  == 7) && boost_gold) {
+		policy->min = get_max_boost_freq(policy);
+		return NOTIFY_OK;
+	}
 
 	if (test_bit(INPUT_BOOST, &b->state) || test_bit(FLEX_BOOST, &b->state)) {
-		if (test_bit(FLEX_BOOST, &b->state)) 
-			policy->min = get_flex_boost_freq(policy);
+		if (test_bit(FLEX_BOOST, &b->state)) {
+			if (policy->cpu < 4)
+				policy->min = get_flex_boost_freq(policy);
+			if ((policy->cpu > 3) && (policy->cpu < 7))
+				policy->min = get_flex_boost_freq(policy);
+		}
 
 		if (test_bit(INPUT_BOOST, &b->state)) {
 			if (policy->cpu < 4)
@@ -729,7 +702,7 @@ static int __init cpu_input_boost_init(void)
 	}
 
 	b->cpu_notif.notifier_call = cpu_notifier_cb;
-	b->cpu_notif.priority = INT_MAX - 2;
+	b->cpu_notif.priority = INT_MAX;
 	ret = cpufreq_register_notifier(&b->cpu_notif, CPUFREQ_POLICY_NOTIFIER);
 	if (ret) {
 		pr_err("Failed to register cpufreq notifier, err: %d\n", ret);
@@ -744,7 +717,7 @@ static int __init cpu_input_boost_init(void)
 	}
 
 	b->msm_drm_notif.notifier_call = msm_drm_notifier_cb;
-	b->msm_drm_notif.priority = INT_MAX;
+	b->msm_drm_notif.priority = INT_MAX-2;
 	ret = msm_drm_register_client(&b->msm_drm_notif);
 	if (ret) {
 		pr_err("Failed to register msm_drm notifier, err: %d\n", ret);
