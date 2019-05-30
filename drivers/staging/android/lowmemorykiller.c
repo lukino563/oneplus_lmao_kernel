@@ -49,6 +49,8 @@
 #include <linux/cpuset.h>
 #include <linux/vmpressure.h>
 #include <linux/freezer.h>
+#include <linux/devfreq_boost.h>
+#include <linux/cpu_input_boost.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/almk.h>
@@ -1115,6 +1117,10 @@ selftest_bypass:
 #ifdef CONFIG_ADJ_CHAIN
 	/* record for each time lmk scan's min_score_adj */
 	bkws[0].min_score_adj = min_score_adj;
+
+	cpu_input_boost_kick_cluster1(250);
+	cpu_input_boost_kick_cluster2(250);
+	devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 250);
 
 	/* marker for select begin */
 	time_measure_marker(MEASURE_START_MARKER, NULL, NULL);
