@@ -430,7 +430,9 @@ static int oem_synaptics_ts_probe(struct i2c_client *client, const struct i2c_de
 	int i;
 	optimize_data.client = client;
 	optimize_data.dev_id = id;
-	optimize_data.workqueue = create_workqueue("tpd_probe_optimize");
+	optimize_data.workqueue = alloc_workqueue("tpd_probe_optimize",
+			    WQ_HIGHPRI | WQ_UNBOUND | WQ_FREEZABLE |
+			    WQ_MEM_RECLAIM, 0);
 	INIT_DELAYED_WORK(&(optimize_data.work), synaptics_ts_probe_func);
 	TPD_ERR("before on cpu [%d]\n",smp_processor_id());
 
@@ -5864,7 +5866,9 @@ static int synaptics_ts_probe(struct i2c_client *client, const struct i2c_device
 	//push_component_info(TOUCH_KEY, ts->fw_id, ts->manu_name);
 	//push_component_info(TP, ts->fw_id, ts->manu_name);
 
-	synaptics_wq = create_singlethread_workqueue("synaptics_wq");
+	synaptics_wq = alloc_workqueue("synaptics_wq",
+			    WQ_HIGHPRI | WQ_UNBOUND | WQ_FREEZABLE |
+			    WQ_MEM_RECLAIM, 0);
 	if( !synaptics_wq ){
 		ret = -ENOMEM;
 		goto exit_createworkqueue_failed;
@@ -5873,7 +5877,9 @@ static int synaptics_ts_probe(struct i2c_client *client, const struct i2c_device
 
 
 	memset(baseline,0,sizeof(baseline));
-	get_base_report = create_singlethread_workqueue("get_base_report");
+	get_base_report = alloc_workqueue("get_base_report",
+			    WQ_HIGHPRI | WQ_UNBOUND | WQ_FREEZABLE |
+			    WQ_MEM_RECLAIM, 0);
 	if( !get_base_report ){
 		ret = -ENOMEM;
 		goto exit_createworkqueue_failed;
