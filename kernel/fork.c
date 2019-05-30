@@ -94,6 +94,12 @@
 #endif
 #include <linux/thread_info.h>
 #include <linux/cpufreq_times.h>
+#ifdef CONFIG_CPU_INPUT_BOOST
+#include <linux/cpu_input_boost.h>
+#endif
+#ifdef CONFIG_DEVFREQ_BOOST
+#include <linux/devfreq_boost.h>
+#endif
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -2100,12 +2106,16 @@ long _do_fork(unsigned long clone_flags,
 	int trace = 0;
 	long nr;
 
+#ifdef CONFIG_CPU_INPUT_BOOST
 	/* Boost CPU to the max for 50 ms when userspace launches an app */
 	if (task_is_zygote(current)) {
-		cpu_input_boost_kick_cluster1(75);
-		cpu_input_boost_kick_cluster2(75);
-		devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 75);
+		cpu_input_boost_kick_cluster1(50);
+		cpu_input_boost_kick_cluster2(50);
+#ifdef CONFIG_DEVFREQ_BOOST
+		devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 50);
+#endif
 	}
+#endif
 
 	/*
 	 * Determine whether and which event to report to ptracer.  When
@@ -2157,6 +2167,16 @@ long _do_fork(unsigned long clone_flags,
 		}
 
 		wake_up_new_task(p);
+
+		#ifdef CONFIG_CPU_INPUT_BOOST
+		if (task_is_zygote(p)) {
+			if (p->cpu < 4)
+				cpu_input_boost_kick_cluster1(1000);
+			if (p->cpu > 3)
+				cpu_input_boost_kick_cluster2(1000);
+			devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 1000);
+		}
+		#endif
 
 		/* forking complete and child started to run, tell ptracer */
 		if (unlikely(trace))
