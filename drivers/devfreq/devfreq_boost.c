@@ -345,12 +345,12 @@ static int __init devfreq_boost_init(void)
 {
 	struct df_boost_drv *d = &df_boost_drv_g;
 	struct task_struct *thread[DEVFREQ_MAX];
-	struct workqueue_struct *wq_i;
+	/*struct workqueue_struct *wq_i;
 	struct workqueue_struct *wq_f;
-	struct workqueue_struct *wq_m;
+	struct workqueue_struct *wq_m;*/
 	int i, ret;
 	
-	wq_i = alloc_workqueue("devfreq_boost_wq_i", WQ_HIGHPRI, 0);
+	/*wq_i = alloc_workqueue("devfreq_boost_wq_i", WQ_HIGHPRI, 0);
 	if (!wq_i) {
 		ret = -ENOMEM;
 		return ret;
@@ -366,13 +366,13 @@ static int __init devfreq_boost_init(void)
 	if (!wq_m) {
 		ret = -ENOMEM;
 		return ret;
-	}
+	}*/
 
 	for (i = 0; i < DEVFREQ_MAX; i++) {
 		struct boost_dev *b = d->devices + i;
-		b->wq_i = wq_i;
-		b->wq_f = wq_f;
-		b->wq_m = wq_m;
+		b->wq_i = alloc_workqueue("devfreq_boost_wq_i", WQ_HIGHPRI, 0);
+		b->wq_f = alloc_workqueue("devfreq_boost_wq_f", WQ_HIGHPRI, 0);
+		b->wq_m = alloc_workqueue("devfreq_boost_wq_m", WQ_HIGHPRI, 0);
 		
 		thread[i] = kthread_run_low_power(devfreq_boost_thread, b,
 						      "devfreq_boostd/%d", i);
@@ -407,4 +407,4 @@ stop_kthreads:
 		kthread_stop(thread[i]);
 	return ret;
 }
-late_initcall_sync(devfreq_boost_init);
+late_initcall(devfreq_boost_init);
