@@ -111,6 +111,16 @@ config CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
 	  have a look at the help section of that governor. The fallback
 	  governor will be 'performance'.
 
+config CPU_FREQ_DEFAULT_GOV_SMURFUTIL
+	bool "smurfutil"
+	depends on SMP
+	select CPU_FREQ_GOV_SMURFUTIL
+	select CPU_FREQ_GOV_PERFORMANCE
+	help
+	  Use the 'smurfutil' CPUFreq governor by default. If unsure,
+	  have a look at the help section of that governor. The fallback
+	  governor will be 'performance'.
+
 config CPU_FREQ_DEFAULT_GOV_INTERACTIVE
 	bool "interactive"
 	select CPU_FREQ_GOV_INTERACTIVE
@@ -230,6 +240,23 @@ config CPU_FREQ_GOV_SCHEDUTIL
 
 	  If in doubt, say N.
 
+config CPU_FREQ_GOV_SMURFUTIL
+	bool "'smurfutil' cpufreq policy governor"
+	depends on CPU_FREQ && SMP
+	select CPU_FREQ_GOV_ATTR_SET
+	select IRQ_WORK
+	help
+	  This governor makes decisions based on the utilization data provided
+	  by the scheduler.  It sets the CPU frequency to be proportional to
+	  the utilization/capacity ratio coming from the scheduler.  If the
+	  utilization is frequency-invariant, the new frequency is also
+	  proportional to the maximum available frequency.  If that is not the
+	  case, it is proportional to the current frequency of the CPU.  The
+	  frequency tipping point is at utilization/capacity equal to 80% in
+	  both cases.
+
+	  If in doubt, say N.
+
 config CPU_FREQ_GOV_INTERACTIVE
 	tristate "'interactive' cpufreq policy governor"
 	depends on CPU_FREQ
@@ -276,15 +303,21 @@ config WAKE_BOOST_DURATION_MS
 
 config INPUT_BOOST_FREQ_LP
 	int "Low-power cluster input boost freq"
-	default "0"
+	default "1382400"
 	help
 	  Input boost frequency for the low-power CPU cluster.
 
 config INPUT_BOOST_FREQ_PERF
 	int "Performance cluster input boost freq"
-	default "0"
+	default "1171200"
 	help
 	  Input boost frequency for the performance CPU cluster.
+
+config INPUT_BOOST_FREQ_GOLD
+	int "Gold cluster input boost freq"
+	default "1171200"
+	help
+	  Input boost frequency for the gold CPU cluster.
 
 config INPUT_BOOST_STUNE_OFFSET
 	int "Foreground app schedtune input boost offset"
@@ -330,26 +363,32 @@ config REMOVE_INPUT_BOOST_FREQ_GOLD
 
 config FLEX_BOOST_FREQ_LP
 	int "Low-power cluster general boost freq"
-	default "0"
+	default "1209600"
 	help
 	  Flex boost frequency for the low-power CPU cluster.
 
 config FLEX_BOOST_FREQ_PERF
 	int "Performance cluster general boost freq"
-	default "0"
+	default "1171200"
 	help
 	  Flex boost frequency for the performance CPU cluster.
 
+config FLEX_BOOST_FREQ_GOLD
+	int "Gold cluster flex boost freq"
+	default "1171200"
+	help
+	  Flex boost frequency for the gold CPU cluster.
+
 config FLEX_BOOST_DURATION_MS
 	int "Flex boost duration"
-	default "150"
+	default "11"
 	help
 	  Input boost duration in milliseconds.
 
 config FLEX_BOOST_STUNE_OFFSET
 	int "Foreground app schedtune max boost offset"
 	depends on DYNAMIC_STUNE_BOOST
-	default "20"
+	default "-20"
 	help
 	  Maximum boost level for the EAS SchedTune boosting system. This
 	  artifically increases perceived load of certain processes in order
@@ -384,15 +423,6 @@ config  GPU_MIN_FREQ
 	help
 	  MIN GPU frequency
 
-config SUSPEND_STUNE_BOOST
-	int "Suspend SchedTune boost value"
-	depends on DYNAMIC_STUNE_BOOST
-	default "-50"
-	help
-	  SchedTune boost value during suspend. This alters the perceived load
-	  of process groups in order to bias core selection as well as CPU
-	  frequency selection. A value of 0 disables this functionality.
-
 config INPUT_THREAD_PRIORITY
 	int "Input hread priority"
 	depends on DYNAMIC_STUNE_BOOST
@@ -419,7 +449,7 @@ config MAX_BOOST_FREQ_LP
 config STUNE_BOOST_EXTENDER_MS
 	int "Foreground app schedtune max extend duration"
 	depends on DYNAMIC_STUNE_BOOST
-	default '2500'
+	default '250'
 	help
 	  Extends the stune boost duration to a given timespan
 
@@ -433,7 +463,7 @@ config MAX_STUNE_BOOST_EXTENDER_MS
 config GPU_BOOST_EXTENDER_MS
 	int "Boost GPU for 3000 ms"
 	depends on DYNAMIC_STUNE_BOOST
-	default '3000'
+	default '500'
 	help
 	  Boosts GPU to given frequency for 3000 ms
 
