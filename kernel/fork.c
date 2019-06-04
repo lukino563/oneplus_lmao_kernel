@@ -2168,15 +2168,17 @@ long _do_fork(unsigned long clone_flags,
 
 		wake_up_new_task(p);
 
-		#ifdef CONFIG_CPU_INPUT_BOOST
+#ifdef CONFIG_CPU_INPUT_BOOST
 		if (task_is_zygote(p)) {
 			if (p->cpu < 4)
-				cpu_input_boost_kick_cluster1(1000);
+				cpu_input_boost_kick_cluster1(500);
 			if (p->cpu > 3)
-				cpu_input_boost_kick_cluster2(1000);
-			devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 1000);
+				cpu_input_boost_kick_cluster2(500);
+#ifdef CONFIG_DEVFREQ_BOOST
+			devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 500);
+#endif
 		}
-		#endif
+#endif
 
 		/* forking complete and child started to run, tell ptracer */
 		if (unlikely(trace))
