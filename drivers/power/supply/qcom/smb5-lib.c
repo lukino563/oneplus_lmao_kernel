@@ -6019,17 +6019,6 @@ irqreturn_t typec_state_change_irq_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static void smblib_lpd_clear_ra_open_work(struct smb_charger *chg)
-{
-	if (chg->lpd_disabled)
-		return;
-
-	cancel_delayed_work_sync(&chg->lpd_detach_work);
-	chg->lpd_stage = LPD_STAGE_FLOAT_CANCEL;
-	cancel_delayed_work_sync(&chg->lpd_ra_open_work);
-	vote(chg->awake_votable, LPD_VOTER, false, 0);
-}
-
 irqreturn_t typec_attach_detach_irq_handler(int irq, void *data)
 {
 	struct smb_irq_data *irq_data = data;
