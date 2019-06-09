@@ -27,9 +27,6 @@ struct boost_slot {
 };
 #endif /* CONFIG_DYNAMIC_STUNE_BOOST */
 
-/* We hold schedtune boost in effect for at least this long */
-#define SCHEDTUNE_BOOST_HOLD_NS 50000000ULL
-
 /*
  * EAS scheduler tunables for task groups.
  */
@@ -614,6 +611,7 @@ boost_write(struct cgroup_subsys_state *css, struct cftype *cft,
 		return -EINVAL;
 
 	st->boost = boost;
+
 #ifdef CONFIG_DYNAMIC_STUNE_BOOST
 	st->boost_default = boost;
 #endif /* CONFIG_DYNAMIC_STUNE_BOOST */
@@ -1049,6 +1047,7 @@ int do_stune_boost(char *st_name, int boost, int *slot)
 }
 
 #endif /* CONFIG_DYNAMIC_STUNE_BOOST */
+
 
 /*
  * Initialize the cgroup structures
