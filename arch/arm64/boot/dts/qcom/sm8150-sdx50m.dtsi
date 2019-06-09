@@ -345,7 +345,7 @@
 		};
 	};
 
-	modem1-modem-usr {
+	modem1-qfe-wtr-usr {
 		polling-delay-passive = <0>;
 		polling-delay = <0>;
 		thermal-governor = "user_space";
@@ -360,7 +360,7 @@
 		};
 	};
 
-	modem1-mmw0-usr {
+	modem1-modem-usr {
 		polling-delay-passive = <0>;
 		polling-delay = <0>;
 		thermal-governor = "user_space";
@@ -375,7 +375,7 @@
 		};
 	};
 
-	modem1-mmw1-usr {
+	modem1-mmw0-usr {
 		polling-delay-passive = <0>;
 		polling-delay = <0>;
 		thermal-governor = "user_space";
@@ -390,7 +390,7 @@
 		};
 	};
 
-	modem1-mmw2-usr {
+	modem1-mmw1-usr {
 		polling-delay-passive = <0>;
 		polling-delay = <0>;
 		thermal-governor = "user_space";
@@ -405,7 +405,7 @@
 		};
 	};
 
-	modem1-mmw3-usr {
+	modem1-mmw2-usr {
 		polling-delay-passive = <0>;
 		polling-delay = <0>;
 		thermal-governor = "user_space";
@@ -420,7 +420,7 @@
 		};
 	};
 
-	modem1-skin-usr {
+	modem1-mmw3-usr {
 		polling-delay-passive = <0>;
 		polling-delay = <0>;
 		thermal-governor = "user_space";
@@ -435,7 +435,7 @@
 		};
 	};
 
-	modem1-pa-mdm-usr {
+	modem1-skin-usr {
 		polling-delay-passive = <0>;
 		polling-delay = <0>;
 		thermal-governor = "user_space";
@@ -450,7 +450,7 @@
 		};
 	};
 
-	modem1-pa-wtr-usr {
+	modem1-pa-mdm-usr {
 		polling-delay-passive = <0>;
 		polling-delay = <0>;
 		thermal-governor = "user_space";
@@ -465,7 +465,7 @@
 		};
 	};
 
-	modem1-pa2-usr {
+	modem1-pa-wtr-usr {
 		polling-delay-passive = <0>;
 		polling-delay = <0>;
 		thermal-governor = "user_space";
