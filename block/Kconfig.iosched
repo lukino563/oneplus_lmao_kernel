@@ -96,7 +96,7 @@ config BFQ_SQ_GROUP_IOSCHED
 choice
 
 	prompt "Default I/O scheduler"
-	default DEFAULT_KYBER
+	default DEFAULT_ANXIETY
 	help
 	  Select the I/O scheduler which will be used by default for all
 	  block devices.
@@ -137,12 +137,10 @@ choice
  	config DEFAULT_DEADLINE
  		bool "Deadline" if IOSCHED_DEADLINE=y
 		select SCSI if MQ_IOSCHED_DEADLINE=y
-		select SCSI_MQ_DEFAULT
 
 	 config DEFAULT_BFQ_MQ
  		bool "BFQ-MQ" if MQ_IOSCHED_BFQ=y
 		select SCSI
-		select SCSI_MQ_DEFAULT
 endchoice
 
 config MQ_IOSCHED_DEADLINE
