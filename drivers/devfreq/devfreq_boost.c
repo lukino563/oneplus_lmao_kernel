@@ -26,7 +26,7 @@ module_param(flex_boost_duration, short, 0644);
 module_param(input_boost_duration, short, 0644);
 
 enum {
-	SCREEN_OFF,
+	SCREEN_ON,
 	INPUT_BOOST,
 	FLEX_BOOST,
 	WAKE_BOOST,
@@ -78,7 +78,7 @@ static struct df_boost_drv df_boost_drv_g __read_mostly = {
 
 static void __devfreq_boost_kick(struct boost_dev *b)
 {
-	if (!READ_ONCE(b->df) || test_bit(SCREEN_OFF, &b->state))
+	if (!READ_ONCE(b->df) || !test_bit(SCREEN_ON, &b->state))
 		return;
 
 	if (!mod_delayed_work(b->wq_i, &b->input_unboost,
@@ -90,7 +90,7 @@ static void __devfreq_boost_kick(struct boost_dev *b)
 
 static void __devfreq_boost_kick_flex(struct boost_dev *b)
 {
-	if (!READ_ONCE(b->df) || test_bit(SCREEN_OFF, &b->state))
+	if (!READ_ONCE(b->df) || !test_bit(SCREEN_ON, &b->state))
 		return;
 
 	if (!mod_delayed_work(b->wq_f, &b->flex_unboost,
@@ -110,7 +110,7 @@ void devfreq_boost_kick_flex(enum df_device device)
 static void __devfreq_boost_kick_max(struct boost_dev *b,
 				     unsigned int duration_ms)
 {
-	if (!READ_ONCE(b->df) || test_bit(SCREEN_OFF, &b->state))
+	if (!READ_ONCE(b->df) || !test_bit(SCREEN_ON, &b->state))
 		return;
 
 	if (!mod_delayed_work(b->wq_m, &b->max_unboost,
@@ -131,7 +131,7 @@ void devfreq_boost_kick_max(enum df_device device, unsigned int duration_ms)
 static void __devfreq_boost_kick_wake(struct boost_dev *b,
 				     unsigned int duration_ms)
 {
-	if (!READ_ONCE(b->df) || !test_bit(SCREEN_OFF, &b->state))
+	if (!READ_ONCE(b->df) || test_bit(SCREEN_ON, &b->state))
 		return;
 
 	if (!mod_delayed_work(b->wq_m, &b->max_unboost,
@@ -192,7 +192,7 @@ static void devfreq_update_boosts(struct boost_dev *b, unsigned long state)
 	struct devfreq *df = b->df;
 
 	mutex_lock(&df->lock);
-	if (test_bit(SCREEN_OFF, &state)) {
+	if (!test_bit(SCREEN_ON, &state)) {
 		df->min_freq = df->profile->freq_table[0];
 		df->max_boost = test_bit(WAKE_BOOST, &state) ? 
 						true :
@@ -220,12 +220,17 @@ static int devfreq_boost_thread(void *data)
 
 	sched_setscheduler_nocheck(current, SCHED_FIFO, &sched_max_rt_prio);
 
-	while (!kthread_should_stop()) {
+	while (1) {
+		bool should_stop = false;
 		unsigned long curr_state;
 
 		wait_event(b->boost_waitq,
 			(curr_state = READ_ONCE(b->state)) != old_state ||
-			kthread_should_stop());
+			(should_stop = kthread_should_stop()));
+
+		if (should_stop)
+			break;
+
 		old_state = curr_state;
 		devfreq_update_boosts(b, curr_state);
 	}
@@ -249,9 +254,14 @@ static int msm_drm_notifier_cb(struct notifier_block *nb, unsigned long action,
 
 		if (*blank == MSM_DRM_BLANK_UNBLANK_CUST) {
 			devfreq_boost_kick_wake(DEVFREQ_MSM_CPUBW, 500);
-			clear_bit(SCREEN_OFF, &b->state);
+			set_bit(SCREEN_ON, &b->state);
 		} else
-			set_bit(SCREEN_OFF, &b->state);
+			clear_bit(SCREEN_ON, &b->state);
+			clear_bit(WAKE_BOOST, &b->state);
+			clear_bit(MAX_BOOST, &b->state);
+			clear_bit(FLEX_BOOST, &b->state);
+			clear_bit(INPUT_BOOST, &b->state);
+			wake_up(&b->boost_waitq);
 	}
 
 	return NOTIFY_OK;
@@ -345,28 +355,7 @@ static int __init devfreq_boost_init(void)
 {
 	struct df_boost_drv *d = &df_boost_drv_g;
 	struct task_struct *thread[DEVFREQ_MAX];
-	/*struct workqueue_struct *wq_i;
-	struct workqueue_struct *wq_f;
-	struct workqueue_struct *wq_m;*/
 	int i, ret;
-	
-	/*wq_i = alloc_workqueue("devfreq_boost_wq_i", WQ_HIGHPRI, 0);
-	if (!wq_i) {
-		ret = -ENOMEM;
-		return ret;
-	}
-	
-	wq_f = alloc_workqueue("devfreq_boost_wq_f", WQ_HIGHPRI, 0);
-	if (!wq_f) {
-		ret = -ENOMEM;
-		return ret;
-	}
-	
-	wq_m = alloc_workqueue("devfreq_boost_wq_m", WQ_HIGHPRI, 0);
-	if (!wq_m) {
-		ret = -ENOMEM;
-		return ret;
-	}*/
 
 	for (i = 0; i < DEVFREQ_MAX; i++) {
 		struct boost_dev *b = d->devices + i;
@@ -381,6 +370,7 @@ static int __init devfreq_boost_init(void)
 			pr_err("Failed to create kthread, err: %d\n", ret);
 			goto stop_kthreads;
 		}
+		set_bit(SCREEN_ON, &b->state);
 	}
 
 	devfreq_boost_input_handler.private = d;
