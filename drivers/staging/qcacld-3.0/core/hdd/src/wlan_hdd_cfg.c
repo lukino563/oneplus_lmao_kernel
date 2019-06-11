@@ -4529,12 +4529,6 @@ struct reg_table_entry g_registry_table[] = {
 		CFG_CRASH_FW_TIMEOUT_DEFAULT,
 		CFG_CRASH_FW_TIMEOUT_DISABLE,
 		CFG_CRASH_FW_TIMEOUT_ENABLE),
-	REG_VARIABLE(CFG_RX_WAKELOCK_TIMEOUT_NAME, WLAN_PARAM_Integer,
-		struct hdd_config, rx_wakelock_timeout,
-		VAR_FLAGS_OPTIONAL | VAR_FLAGS_RANGE_CHECK_ASSUME_DEFAULT,
-		CFG_RX_WAKELOCK_TIMEOUT_DEFAULT,
-		CFG_RX_WAKELOCK_TIMEOUT_MIN,
-		CFG_RX_WAKELOCK_TIMEOUT_MAX),
 	REG_VARIABLE(CFG_SAP_CH_SWITCH_BEACON_CNT, WLAN_PARAM_Integer,
 		     struct hdd_config, sap_chanswitch_beacon_cnt,
 		     VAR_FLAGS_OPTIONAL | VAR_FLAGS_RANGE_CHECK_ASSUME_DEFAULT,
@@ -6935,7 +6929,6 @@ static void hdd_cfg_print_action_oui(struct hdd_context *hdd_ctx)
 {
 #ifdef WLAN_DEBUG
 	struct hdd_config *config = hdd_ctx->config;
-#endif
 
 	hdd_debug("Name = [%s] value = [%u]",
 		  CFG_ENABLE_ACTION_OUI,
@@ -6968,6 +6961,7 @@ static void hdd_cfg_print_action_oui(struct hdd_context *hdd_ctx)
 	hdd_debug("Name = [%s] value = [%s]",
 		  CFG_ACTION_OUI_DISABLE_AGGRESSIVE_TX_NAME,
 		  config->action_oui_str[ACTION_OUI_DISABLE_AGGRESSIVE_TX]);
+#endif
 }
 
 /**
@@ -8194,55 +8188,27 @@ static void hdd_set_rx_mode_value(struct hdd_context *hdd_ctx)
  */
 QDF_STATUS hdd_parse_config_ini(struct hdd_context *hdd_ctx)
 {
-	int status = 0;
 	int i = 0;
-	int retry = 0;
-	/** Pointer for firmware image data */
-	const struct firmware *fw = NULL;
 	char *buffer, *line, *pTemp = NULL;
 	size_t size;
 	char *name, *value;
 	/* cfgIniTable is static to avoid excess stack usage */
 	static struct hdd_cfg_entry cfgIniTable[MAX_CFG_INI_ITEMS];
 	QDF_STATUS qdf_status = QDF_STATUS_SUCCESS;
+	#include "wlan_hdd_cfg.h"
 
 	memset(cfgIniTable, 0, sizeof(cfgIniTable));
 
-	do {
-		if (status == -EAGAIN)
-			msleep(HDD_CFG_REQUEST_FIRMWARE_DELAY);
-
-		status = request_firmware(&fw, WLAN_INI_FILE,
-					  hdd_ctx->parent_dev);
-
-		retry++;
-	} while ((retry < HDD_CFG_REQUEST_FIRMWARE_RETRIES) &&
-		 (status == -EAGAIN));
-
-	if (status) {
-		hdd_alert("request_firmware failed %d", status);
-		qdf_status = QDF_STATUS_E_FAILURE;
-		goto config_exit;
-	}
-	if (!fw || !fw->data || !fw->size) {
-		hdd_alert("%s download failed", WLAN_INI_FILE);
-		qdf_status = QDF_STATUS_E_FAILURE;
-		goto config_exit;
-	}
-
-	hdd_debug("qcom_cfg.ini Size %zu", fw->size);
-
-	buffer = (char *)qdf_mem_malloc(fw->size);
+	size = strlen(wlan_cfg) + 1;
+	buffer = (char *)qdf_mem_malloc(size);
 
 	if (NULL == buffer) {
 		hdd_err("qdf_mem_malloc failure");
-		release_firmware(fw);
 		return QDF_STATUS_E_NOMEM;
 	}
 	pTemp = buffer;
 
-	qdf_mem_copy((void *)buffer, (void *)fw->data, fw->size);
-	size = fw->size;
+	qdf_mem_copy((void *)buffer, (void *)wlan_cfg, size);
 
 	while (buffer != NULL) {
 		line = get_next_line(buffer);
@@ -8291,8 +8257,6 @@ QDF_STATUS hdd_parse_config_ini(struct hdd_context *hdd_ctx)
 	if (QDF_GLOBAL_MONITOR_MODE == cds_get_conparam())
 		hdd_override_all_ps(hdd_ctx);
 
-config_exit:
-	release_firmware(fw);
 	qdf_mem_free(pTemp);
 	return qdf_status;
 }
@@ -9095,6 +9059,8 @@ QDF_STATUS hdd_set_policy_mgr_user_cfg(struct hdd_context *hdd_ctx)
 		hdd_ctx->config->channel_select_logic_conc;
 	user_cfg->sta_sap_scc_on_lte_coex_chan =
 		hdd_ctx->config->sta_sap_scc_on_lte_coex_chan;
+	user_cfg->enable_dfs_master_cap =
+		hdd_ctx->config->enableDFSMasterCap;
 	status = policy_mgr_set_user_cfg(hdd_ctx->psoc, user_cfg);
 	qdf_mem_free(user_cfg);
 

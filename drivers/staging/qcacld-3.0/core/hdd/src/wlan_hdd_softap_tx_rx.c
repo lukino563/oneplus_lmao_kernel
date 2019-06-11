@@ -42,6 +42,7 @@
 #include <wlan_hdd_regulatory.h>
 #include "wlan_ipa_ucfg_api.h"
 #include <wma_types.h>
+#include "wlan_mlme_ucfg_api.h"
 
 /* Preprocessor definitions and constants */
 #undef QCA_HDD_SAP_DUMP_SK_BUFF
@@ -912,19 +913,6 @@ QDF_STATUS hdd_softap_rx_packet_cbk(void *context, qdf_nbuf_t rx_buf)
 
 		skb->protocol = eth_type_trans(skb, skb->dev);
 
-		/* hold configurable wakelock for unicast traffic */
-		if (!hdd_is_current_high_throughput(hdd_ctx) &&
-		    hdd_ctx->config->rx_wakelock_timeout &&
-		    skb->pkt_type != PACKET_BROADCAST &&
-		    skb->pkt_type != PACKET_MULTICAST) {
-			cds_host_diag_log_work(&hdd_ctx->rx_wake_lock,
-						   hdd_ctx->config->rx_wakelock_timeout,
-						   WIFI_POWER_EVENT_WAKELOCK_HOLD_RX);
-			qdf_wake_lock_timeout_acquire(&hdd_ctx->rx_wake_lock,
-							  hdd_ctx->config->
-								  rx_wakelock_timeout);
-		}
-
 		/* Remove SKB from internal tracking table before submitting
 		 * it to stack
 		 */
@@ -946,6 +934,7 @@ QDF_STATUS hdd_softap_deregister_sta(struct hdd_adapter *adapter,
 {
 	QDF_STATUS qdf_status = QDF_STATUS_SUCCESS;
 	struct hdd_context *hdd_ctx;
+	tSmeConfigParams *sme_config;
 
 	if (NULL == adapter) {
 		hdd_err("NULL adapter");
@@ -988,6 +977,16 @@ QDF_STATUS hdd_softap_deregister_sta(struct hdd_adapter *adapter,
 	}
 
 	hdd_ctx->sta_to_adapter[sta_id] = NULL;
+	sme_config = qdf_mem_malloc(sizeof(*sme_config));
+
+	if (!sme_config) {
+		hdd_err("Unable to allocate memory for smeconfig!");
+		return 0;
+	}
+	sme_get_config_param(hdd_ctx->mac_handle, sme_config);
+	ucfg_mlme_update_oce_flags(hdd_ctx->pdev,
+				   sme_config->csrConfig.oce_feature_bitmap);
+	qdf_mem_free(sme_config);
 
 	return qdf_status;
 }
@@ -1005,6 +1004,7 @@ QDF_STATUS hdd_softap_register_sta(struct hdd_adapter *adapter,
 	struct ol_txrx_ops txrx_ops;
 	void *soc = cds_get_context(QDF_MODULE_ID_SOC);
 	void *pdev = cds_get_context(QDF_MODULE_ID_TXRX);
+	tSmeConfigParams *sme_config;
 
 	hdd_info("STA:%u, Auth:%u, Priv:%u, WMM:%u",
 		 sta_id, auth_required, privacy_required, wmm_enabled);
@@ -1082,7 +1082,16 @@ QDF_STATUS hdd_softap_register_sta(struct hdd_adapter *adapter,
 	wlan_hdd_netif_queue_control(adapter,
 				   WLAN_START_ALL_NETIF_QUEUE_N_CARRIER,
 				   WLAN_CONTROL_PATH);
+	sme_config = qdf_mem_malloc(sizeof(*sme_config));
 
+	if (!sme_config) {
+		hdd_err("Unable to allocate memory for smeconfig!");
+		return 0;
+	}
+	sme_get_config_param(hdd_ctx->mac_handle, sme_config);
+	ucfg_mlme_update_oce_flags(hdd_ctx->pdev,
+				   sme_config->csrConfig.oce_feature_bitmap);
+	qdf_mem_free(sme_config);
 	return qdf_status;
 }
 
