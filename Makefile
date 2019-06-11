@@ -446,7 +446,12 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
 		   -std=gnu89
-	KBUILD_CFLAGS	+= -ffast-math -funsafe-math-optimizations
+KBUILD_CFLAGS	+= -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
+		   -fno-strict-aliasing -fno-common -fshort-wchar -std=gnu89 $(call cc-option,-fno-PIE) \
+		   -mcpu=cortex-a76.cortex-a55+crypto -mtune=cortex-a76.cortex-a55 -fdiagnostics-color=always \
+		   -Wno-attribute-alias -fno-common -fshort-wchar -ffast-math -fgcse-sm -fipa-pta \
+		   -fgcse-las -fbranch-target-load-optimize -fno-asynchronous-unwind-tables\
+		   -flive-range-shrinkage -fvariable-expansion-in-unroller -funsafe-math-optimizations
 KBUILD_CPPFLAGS := -D__KERNEL__
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
@@ -714,12 +719,12 @@ KBUILD_CFLAGS   += $(call cc-disable-warning, designated-init)
 KBUILD_CFLAGS   += $(call cc-disable-warning, maybe-uninitialized)
 
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
-KBUILD_CFLAGS	+= -O3 $(call cc-disable-warning,maybe-uninitialized,)
+KBUILD_CFLAGS	+= -Ofast $(call cc-disable-warning,maybe-uninitialized,)
 else
 ifdef CONFIG_PROFILE_ALL_BRANCHES
-KBUILD_CFLAGS	+= -O3 $(call cc-disable-warning,maybe-uninitialized,)
+KBUILD_CFLAGS	+= -Ofast $(call cc-disable-warning,maybe-uninitialized,)
 else
-KBUILD_CFLAGS   += -O3
+KBUILD_CFLAGS   += -Ofast
 endif
 endif
 
