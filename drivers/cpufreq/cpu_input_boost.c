@@ -81,7 +81,7 @@ module_param(little_only, bool, 0644);
 module_param(boost_gold, bool, 0644);
 
 enum {
-	SCREEN_OFF,
+	SCREEN_ON,
 	INPUT_BOOST,
 	FLEX_BOOST,
 	CLUSTER1_BOOST,
@@ -344,7 +344,7 @@ void cpu_input_boost_kick_cluster1(unsigned int duration_ms)
 	if (duration_ms == 0)
 		return;
 
-	if (test_bit(SCREEN_OFF, &b->state))
+	if (!test_bit(SCREEN_ON, &b->state))
 		return;
 	
 	__cpu_input_boost_kick_cluster1(b, duration_ms);
@@ -357,7 +357,7 @@ void cpu_input_boost_kick_cluster2(unsigned int duration_ms)
 	if (little_only || duration_ms == 0)
 		return;
 
-	if (test_bit(SCREEN_OFF, &b->state))
+	if (!test_bit(SCREEN_ON, &b->state))
 		return;
 
 	__cpu_input_boost_kick_cluster2(b, duration_ms);
@@ -395,7 +395,7 @@ void cpu_input_boost_kick_cluster1_wake(unsigned int duration_ms)
 	if (duration_ms == 0)
 		return;
 
-	if (!test_bit(SCREEN_OFF, &b->state))
+	if (test_bit(SCREEN_ON, &b->state))
 		return;
 
 	__cpu_input_boost_kick_cluster1_wake(b, duration_ms);
@@ -408,7 +408,7 @@ void cpu_input_boost_kick_cluster2_wake(unsigned int duration_ms)
 	if (duration_ms == 0)
 		return;
 
-	if (!test_bit(SCREEN_OFF, &b->state))
+	if (test_bit(SCREEN_ON, &b->state))
 		return;
 
 	__cpu_input_boost_kick_cluster2_wake(b, duration_ms);
@@ -429,7 +429,7 @@ void cpu_input_boost_kick_flex(void)
 {
 	struct boost_drv *b = &boost_drv_g;
 	
-	if (test_bit(SCREEN_OFF, &b->state) || flex_boost_duration == 0)
+	if (!test_bit(SCREEN_ON, &b->state) || flex_boost_duration == 0)
 		return;
 
 	__cpu_input_boost_kick_flex(b);
@@ -517,15 +517,21 @@ static int cpu_boost_thread(void *data)
 
 	sched_setscheduler_nocheck(current, SCHED_FIFO, &sched_max_rt_prio);
 
-	while (!kthread_should_stop()) {
+	while (1) {
+		bool should_stop = false;
 		unsigned long curr_state;
 
 		wait_event(b->boost_waitq,
 			(curr_state = READ_ONCE(b->state)) != old_state ||
-			kthread_should_stop());
+			(should_stop = kthread_should_stop()));
+
+		if (should_stop)
+			break;
+
 		old_state = curr_state;
 		update_online_cpu_policy();
 	}
+
 	return 0;
 }
 
@@ -552,7 +558,7 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 	}
 
 	/* Unboost when the screen is off */
-	if (test_bit(SCREEN_OFF, &b->state)) {
+	if (!test_bit(SCREEN_ON, &b->state)) {
 		min_freq = get_min_freq(b, policy->cpu);
 		policy->min = max(policy->cpuinfo.min_freq, min_freq);
 		return NOTIFY_OK;
@@ -601,8 +607,6 @@ static int msm_drm_notifier_cb(struct notifier_block *nb,
 	struct msm_drm_notifier *evdata = data;
 	int *blank = evdata->data;
 
-	clear_bit(SCREEN_OFF, &b->state);
-
 	/* Parse framebuffer blank events as soon as they occur */
 	if (action != MSM_DRM_EARLY_EVENT_BLANK)
 		return NOTIFY_OK;
@@ -611,9 +615,19 @@ static int msm_drm_notifier_cb(struct notifier_block *nb,
 	if (*blank == MSM_DRM_BLANK_UNBLANK_CUST) {	
 		cpu_input_boost_kick_cluster1_wake(500);
 		cpu_input_boost_kick_cluster2_wake(500);	
-		clear_bit(SCREEN_OFF, &b->state);
+		set_bit(SCREEN_ON, &b->state);
 	} else {
-		set_bit(SCREEN_OFF, &b->state);
+		clear_bit(SCREEN_ON, &b->state);
+		clear_bit(INPUT_BOOST, &b->state);
+		clear_bit(FLEX_BOOST, &b->state);
+		clear_bit(CLUSTER1_BOOST, &b->state);
+		clear_bit(CLUSTER2_BOOST, &b->state);
+		clear_bit(CLUSTER1_WAKE_BOOST, &b->state);
+		clear_bit(CLUSTER2_WAKE_BOOST, &b->state);
+		clear_bit(INPUT_STUNE_BOOST, &b->state);
+		clear_bit(MAX_STUNE_BOOST, &b->state);
+		clear_bit(FLEX_STUNE_BOOST, &b->state);
+		wake_up(&b->boost_waitq);
 	}
 	return NOTIFY_OK;
 }
@@ -774,6 +788,8 @@ static int __init cpu_input_boost_init(void)
 		ret = -ENOMEM;
 		return ret;
 	}
+
+	set_bit(SCREEN_ON, &b->state);
 
 	b->cpu_notif.notifier_call = cpu_notifier_cb;
 	b->cpu_notif.priority = INT_MAX;
