@@ -559,15 +559,17 @@ static ssize_t __cgroup1_procs_write(struct kernfs_open_file *of,
 
 	/* This covers boosting for app launches and app transitions */
 #ifdef CONFIG_CPU_INPUT_BOOST
-	if (!ret && !threadgroup && !strcmp(of->kn->parent->name, "top-app") &&
-	    task_is_zygote(task->parent)) {
-		if (task->cpu < 4)
-			cpu_input_boost_kick_cluster1(1000);
-		else if ((task->cpu > 3) && (task->cpu < 7))
-			cpu_input_boost_kick_cluster2(1000);
+	if (of && task) {
+		if (!ret && !threadgroup && !strcmp(of->kn->parent->name, "top-app") &&
+	    	task_is_zygote(task->parent)) {
+			if (task->cpu < 4)
+				cpu_input_boost_kick_cluster1(1000);
+			else if ((task->cpu > 3) && (task->cpu < 7))
+				cpu_input_boost_kick_cluster2(1000);
 #ifdef CONFIG_DEVFRQ_BOOST
-		devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 1000);
+			devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 1000);
 #endif
+		}
 	}
 #endif
 

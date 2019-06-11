@@ -2108,12 +2108,14 @@ long _do_fork(unsigned long clone_flags,
 
 #ifdef CONFIG_CPU_INPUT_BOOST
 	/* Boost CPU to the max for 50 ms when userspace launches an app */
-	if (task_is_zygote(current)) {
-		cpu_input_boost_kick_cluster1(50);
-		cpu_input_boost_kick_cluster2(50);
+	if (current)  {
+		if (task_is_zygote(current)) {
+			cpu_input_boost_kick_cluster1(50);
+			cpu_input_boost_kick_cluster2(50);
 #ifdef CONFIG_DEVFREQ_BOOST
-		devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 50);
+			devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 50);
 #endif
+		}
 	}
 #endif
 
@@ -2169,14 +2171,16 @@ long _do_fork(unsigned long clone_flags,
 		wake_up_new_task(p);
 
 #ifdef CONFIG_CPU_INPUT_BOOST
-		if (task_is_zygote(p)) {
-			if (p->cpu < 4)
-				cpu_input_boost_kick_cluster1(500);
-			if (p->cpu > 3)
-				cpu_input_boost_kick_cluster2(500);
+		if (p) {
+			if (task_is_zygote(p)) {
+				if (p->cpu < 4)
+					cpu_input_boost_kick_cluster1(500);
+				if (p->cpu > 3)
+					cpu_input_boost_kick_cluster2(500);
 #ifdef CONFIG_DEVFREQ_BOOST
-			devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 500);
+				devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 500);
 #endif
+			}
 		}
 #endif
 
