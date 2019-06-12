@@ -478,11 +478,11 @@ static void kyber_completed_request(struct request *rq)
 	if (blk_stat_is_active(kqd->cb))
 		return;
 
-	now = ktime_get_ns();
-	if (now < rq->io_start_time_ns)
+	now = __blk_stat_time(ktime_to_ns(ktime_get()));
+	if (now < blk_stat_time(&rq->issue_stat))
 		return;
 
-	latency = now - rq->io_start_time_ns;
+	latency = now - blk_stat_time(&rq->issue_stat);
 
 	if (latency > target)
 		blk_stat_activate_msecs(kqd->cb, 10);
