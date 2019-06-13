@@ -757,15 +757,10 @@ int qrtr_endpoint_post(struct qrtr_endpoint *ep, const void *data, size_t len)
 	    cb->type != QRTR_TYPE_RESUME_TX)
 		goto err;
 
-	__pm_wakeup_event(node->ws, 0);
+	if (node->ws && node->nid == 0)
+		__pm_wakeup_event(node->ws, 0);
 
-	if (frag) {
-		skb->data_len = size;
-		skb->len = size;
-		skb_store_bits(skb, 0, data + hdrlen, size);
-	} else {
-		skb_put_data(skb, data + hdrlen, size);
-	}
+	skb_put_data(skb, data + hdrlen, size);
 	qrtr_log_rx_msg(node, skb);
 
 	skb_queue_tail(&node->rx_queue, skb);
