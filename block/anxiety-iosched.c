@@ -91,7 +91,6 @@ static int anxiety_init_queue(struct request_queue *q, struct elevator_type *elv
 		kobject_put(&eq->kobj);
 		return -ENOMEM;
 	}
-	eq->elevator_data = data;
 
 	/* Set the elevator data */
 	eq->elevator_data = adata;
