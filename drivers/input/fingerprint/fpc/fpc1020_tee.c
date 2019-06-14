@@ -350,7 +350,6 @@ static irqreturn_t fpc1020_irq_handler(int irq, void *handle)
 
 	cpu_input_boost_kick_cluster1_wake(500);
 	cpu_input_boost_kick_cluster2_wake(500);
-	devfreq_boost_kick_wake(DEVFREQ_MSM_CPUBW, 500);
 
 	sysfs_notify(&fpc1020->dev->kobj, NULL, dev_attr_irq.attr.name);
 
