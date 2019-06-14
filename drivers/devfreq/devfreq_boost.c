@@ -21,8 +21,8 @@
 static unsigned short flex_boost_duration __read_mostly = CONFIG_FLEX_DEVFREQ_BOOST_DURATION_MS;
 static unsigned short input_boost_duration __read_mostly = CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS;
 static unsigned int devfreq_thread_prio __read_mostly = CONFIG_DEVFREQ_THREAD_PRIORITY;
-static unsigned int devfreq_boost_freq_low = CONFIG_DEVFREQ_MSM_CPUBW_BOOST_FREQ_LOW;
-static unsigned int devfreq_boost_freq = CONFIG_DEVFREQ_MSM_CPUBW_BOOST_FREQ;
+static unsigned int devfreq_boost_freq_low  __read_mostly = CONFIG_DEVFREQ_MSM_CPUBW_BOOST_FREQ_LOW;
+static unsigned int devfreq_boost_freq __read_mostly = CONFIG_DEVFREQ_MSM_CPUBW_BOOST_FREQ;
 
 module_param(flex_boost_duration, short, 0644);
 module_param(input_boost_duration, short, 0644);
@@ -39,7 +39,6 @@ struct boost_dev {
 	struct workqueue_struct *wq_i;
 	struct workqueue_struct *wq_f;
 	struct workqueue_struct *wq_m;
-//	struct workqueue_struct *b_wq;
 	struct devfreq *df;
 	struct delayed_work input_unboost;
 	struct delayed_work flex_unboost;
@@ -48,7 +47,6 @@ struct boost_dev {
 	wait_queue_head_t boost_waitq;
 	unsigned long boost_freq;
 	unsigned long state;
-	//unsigned long current_state;
 	atomic_long_t max_boost_expires;
 };
 
@@ -59,10 +57,7 @@ struct df_boost_drv {
 
 static void devfreq_input_unboost(struct work_struct *work);
 static void devfreq_max_unboost(struct work_struct *work);
-static void devfreq_flex_unboost(struct work_struct *work);
-//static void boost_worker(struct work_struct *work);
-//	.boost = __WORK_INITIALIZER((b).devices[dev].boost,			
-//						  boost_worker),		
+static void devfreq_flex_unboost(struct work_struct *work);	
 
 #define BOOST_DEV_INIT(b, dev, freq) .devices[dev] = {				\
 	.input_unboost =							\
@@ -234,10 +229,10 @@ static void devfreq_update_boosts(struct boost_dev *b, unsigned long state)
 	} else {
 		mutex_lock(&df->lock);
 		df->min_freq = test_bit(FLEX_BOOST, &state) ?
-			       min(devfreq_boost_freq_low, df->max_freq) :
+			       devfreq_boost_freq_low :
 			       df->profile->freq_table[0];
 		df->min_freq = test_bit(INPUT_BOOST, &state) ?
-			       min(devfreq_boost_freq, df->max_freq) :
+			       devfreq_boost_freq :
 			       df->profile->freq_table[0];
 		df->max_boost = test_bit(MAX_BOOST, &state);
 		update_devfreq(df);
@@ -245,11 +240,6 @@ static void devfreq_update_boosts(struct boost_dev *b, unsigned long state)
 	}
 }
 
-/*static void boost_worker(struct work_struct *work)
-{
-	struct boost_dev *b = container_of(work, typeof(*b), boost);
-	devfreq_update_boosts (b, b->current_state) ;
-}*/
 
 static int devfreq_boost_thread(void *data)
 {
@@ -266,18 +256,17 @@ static int devfreq_boost_thread(void *data)
 
 	while (1) {
 		bool should_stop = false;
-		unsigned long curr_state;
+		unsigned long current_state;
 
 		wait_event(b->boost_waitq,
-			(curr_state = READ_ONCE(b->state)) != old_state ||
+			(current_state = READ_ONCE(b->state)) != old_state ||
 			kthread_should_stop());
 
 		if (should_stop)
 			break;
 
 		old_state = current_state;
-		devfreq_update_boosts(b, curr_state);
-		//queue_work(b->b_wq, &b->boost);
+		devfreq_update_boosts(b, current_state);
 	}
 
 	return 0;
@@ -407,7 +396,6 @@ static int __init devfreq_boost_init(void)
 		b->wq_i = alloc_workqueue("devfreq_boost_wq_i", WQ_HIGHPRI, 0);
 		b->wq_f = alloc_workqueue("devfreq_boost_wq_f", WQ_HIGHPRI, 0);
 		b->wq_m = alloc_workqueue("devfreq_boost_wq_m", WQ_HIGHPRI, 0);
-//		b->b_wq = alloc_workqueue("devfreq_boost_b_wq", WQ_HIGHPRI, 0);
 		
 		thread[i] = kthread_run_low_power(devfreq_boost_thread, b,
 						      "devfreq_boostd/%d", i);
