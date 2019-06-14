@@ -46,7 +46,7 @@ function clean_all {
 }
 
 function make_kernel {
-	      cp ~/android/SmurfKernelOP7/Makefile.gcc9 ~/android/SmurfKernelOP7/Makefile
+	      cp ~/android/SmurfKernelOP7/Makefile.gcc9wg ~/android/SmurfKernelOP7/Makefile
 	      echo
               make ARCH=arm64 O=out $DEFCONFIG
               make ARCH=arm64 O=out $THREAD
