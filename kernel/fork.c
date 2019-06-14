@@ -2110,10 +2110,10 @@ long _do_fork(unsigned long clone_flags,
 	/* Boost CPU to the max for 50 ms when userspace launches an app */
 	if (current)  {
 		if (task_is_zygote(current)) {
-			cpu_input_boost_kick_cluster1(50);
-			cpu_input_boost_kick_cluster2(50);
+			cpu_input_boost_kick_cluster1(750);
+			cpu_input_boost_kick_cluster2(750);
 #ifdef CONFIG_DEVFREQ_BOOST
-			devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 50);
+			devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 750);
 #endif
 		}
 	}
@@ -2170,7 +2170,7 @@ long _do_fork(unsigned long clone_flags,
 
 		wake_up_new_task(p);
 
-#ifdef CONFIG_CPU_INPUT_BOOST
+/*#ifdef CONFIG_CPU_INPUT_BOOST
 		if (p) {
 			if (task_is_zygote(p)) {
 				if (p->cpu < 4)
@@ -2182,7 +2182,7 @@ long _do_fork(unsigned long clone_flags,
 #endif
 			}
 		}
-#endif
+#endif*/
 
 		/* forking complete and child started to run, tell ptracer */
 		if (unlikely(trace))
