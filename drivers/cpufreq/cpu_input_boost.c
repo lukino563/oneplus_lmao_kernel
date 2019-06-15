@@ -662,8 +662,8 @@ static int fb_notifier_cb(struct notifier_block *nb, unsigned long action,
 
 	/* Boost when the screen turns on and unboost when it turns off */
 	if (*blank == FB_BLANK_UNBLANK) {
-		cpu_input_boost_kick_cluster1_wake(500);
-		cpu_input_boost_kick_cluster2_wake(500);	
+		cpu_input_boost_kick_cluster1_wake(1000);
+		cpu_input_boost_kick_cluster2_wake(1000);	
 		set_bit(SCREEN_ON, &b->state);
 	} else {
 		clear_bit(SCREEN_ON, &b->state);
@@ -856,7 +856,7 @@ static int __init cpu_input_boost_init(void)
 	}
 
 	b->fb_notif.notifier_call = fb_notifier_cb;
-	b->fb_notif.priority = INT_MAX;
+	b->fb_notif.priority = INT_MAX-2;
 	ret = fb_register_client(&b->fb_notif);
 	if (ret) {
 		pr_err("Failed to register fb notifier, err: %d\n", ret);
