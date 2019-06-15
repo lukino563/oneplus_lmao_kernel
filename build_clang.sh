@@ -21,7 +21,7 @@ export KBUILD_COMPILER_STRING=$(~/android/Toolchains/LLVM806/bin/clang --version
 DEFCONFIG="smurf_defconfig"
 
 # Kernel Details
-VER=".1.2.0"
+VER=".1.3.0t2"
 
 # Paths
 KERNEL_DIR=`pwd`
