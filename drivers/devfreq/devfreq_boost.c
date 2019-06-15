@@ -57,7 +57,7 @@ struct df_boost_drv {
 
 static void devfreq_input_unboost(struct work_struct *work);
 static void devfreq_max_unboost(struct work_struct *work);
-static void devfreq_flex_unboost(struct work_struct *work);	
+static void devfreq_flex_unboost(struct work_struct *work);
 
 #define BOOST_DEV_INIT(b, dev, freq) .devices[dev] = {				\
 	.input_unboost =							\
@@ -220,13 +220,13 @@ static void devfreq_update_boosts(struct boost_dev *b, unsigned long state)
 {
 	struct devfreq *df = b->df;
 
-	if (!test_bit(SCREEN_ON, &state)) {
+	if (unlikely (READ_ONCE(b->df) && !test_bit(SCREEN_ON, &state))) {
 		mutex_lock(&df->lock);
-		df->max_boost = false;
 		df->min_freq = df->profile->freq_table[0];
+		df->min_freq = test_bit(WAKE_BOOST, &state);
 		update_devfreq(df);
 		mutex_unlock(&df->lock);
-	} else {
+	} else if (READ_ONCE(b->df)) {
 		mutex_lock(&df->lock);
 		df->min_freq = test_bit(FLEX_BOOST, &state) ?
 			       devfreq_boost_freq_low :
@@ -287,6 +287,7 @@ static int fb_notifier_cb(struct notifier_block *nb, unsigned long action,
 		struct boost_dev *b = d->devices + i;
 
 		if (*blank == FB_BLANK_UNBLANK) {
+			devfreq_boost_kick_wake(DEVFREQ_MSM_CPUBW, 1000);
 			set_bit(SCREEN_ON, &b->state);
 		} else {
 			clear_bit(SCREEN_ON, &b->state);
@@ -415,7 +416,7 @@ static int __init devfreq_boost_init(void)
 	}
 
 	d->fb_notif.notifier_call = fb_notifier_cb;
-	d->fb_notif.priority = INT_MAX;
+	d->fb_notif.priority = INT_MAX-2;
 	ret = fb_register_client(&d->fb_notif);
 	if (ret) {
 		pr_err("Failed to register fb notifier, err: %d\n", ret);
