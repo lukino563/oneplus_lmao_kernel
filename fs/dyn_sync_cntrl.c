@@ -16,7 +16,11 @@
 #include <linux/notifier.h>
 #include <linux/reboot.h>
 #include <linux/writeback.h>
+#ifdef CONFIG_DRM_MSM
+#include <linux/msm_drm_notify.h>
+#else
 #include <linux/fb.h>
+#endif
 #include <linux/dyn_sync_cntrl.h>
 
 // fsync_mutex protects dyn_fsync_active during suspend / late resume transitions
@@ -28,7 +32,11 @@ static DEFINE_MUTEX(fsync_mutex);
 bool suspend_active __read_mostly = true;
 bool dyn_fsync_active __read_mostly = false;
 
+#ifdef CONFIG_DRM_MSM
+struct notifier_block msm_drm_notif;
+#else
 struct notifier_block fb_notif;
+#endif
 
 extern void sync_filesystems(int wait);
 
@@ -115,6 +123,41 @@ static int dyn_fsync_notify_sys(struct notifier_block *this, unsigned long code,
 	return NOTIFY_DONE;
 }
 
+#ifdef CONFIG_DRM_MSM
+static int msm_drm_notifier_cb(struct notifier_block *nb,
+	unsigned long event, void *data)
+{
+	struct msm_drm_notifier *evdata = data;
+	int blank;
+
+	if (!dyn_fsync_active) 
+		return 0;
+
+	blank = *(int *)(evdata->data);	
+
+	if (event != MSM_DRM_EARLY_EVENT_BLANK)
+		return 0;
+
+	if (blank == MSM_DRM_BLANK_POWERDOWN_CUST) {
+		mutex_lock(&fsync_mutex);
+		suspend_active = false;
+
+		if (dyn_fsync_active) 
+		{
+			dyn_fsync_force_flush();
+		}
+		
+		mutex_unlock(&fsync_mutex);
+	} else if (blank == MSM_DRM_BLANK_UNBLANK_CUST) {
+		pr_info("Screen off, dynamic fsync off\n");
+		mutex_lock(&fsync_mutex);
+		suspend_active = true;
+		mutex_unlock(&fsync_mutex);
+	}
+
+	return 0;
+}
+#else
 static int fb_notifier_cb(struct notifier_block *nb, unsigned long action,
 			  void *data)
 {
@@ -142,6 +185,7 @@ static int fb_notifier_cb(struct notifier_block *nb, unsigned long action,
 
 	return 0;
 }
+#endif
 
 // Module structures
 
@@ -211,9 +255,14 @@ static int dyn_fsync_init(void)
 		pr_err("%s dyn_fsync sysfs create failed!\n", __FUNCTION__);
 		kobject_put(dyn_fsync_kobj);
 	}
-
+#ifdef CONFIG_DRM_MSM
+	msm_drm_notif.notifier_call = msm_drm_notifier_cb;
+	msm_drm_notif.priority = INT_MAX-2;
+	ret = msm_drm_register_client(&msm_drm_notif);
+#else
 	fb_notif.notifier_call = fb_notifier_cb;
 	ret = fb_register_client(&fb_notif);
+#endif
 	if (ret) 
 	{
 		pr_err("%s: Failed to register msm_drm_notifier callback\n", __func__);
@@ -244,8 +293,11 @@ static void dyn_fsync_exit(void)
 
 	if (dyn_fsync_kobj != NULL)
 		kobject_put(dyn_fsync_kobj);
-	
+#ifdef CONFIG_DRM_MSM
+	msm_drm_unregister_client(&msm_drm_notif);
+#else
 	fb_unregister_client(&fb_notif);
+#endif
 		
 	pr_info("%s dynamic fsync unregistration complete\n", __FUNCTION__);
 }

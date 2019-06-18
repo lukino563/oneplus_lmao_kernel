@@ -6,7 +6,11 @@
 #define pr_fmt(fmt) "devfreq_boost: " fmt
 
 #include <linux/devfreq_boost.h>
+#ifdef CONFIG_DRM_MSM
+#include <linux/msm_drm_notify.h>
+#else
 #include <linux/fb.h>
+#endif
 #include <linux/input.h>
 #include <linux/kthread.h>
 #include <linux/slab.h>
@@ -52,7 +56,11 @@ struct boost_dev {
 
 struct df_boost_drv {
 	struct boost_dev devices[DEVFREQ_MAX];
+#ifdef CONFIG_DRM_MSM
+	struct notifier_block msm_drm_notif;
+#else
 	struct notifier_block fb_notif;
+#endif
 };
 
 static void devfreq_input_unboost(struct work_struct *work);
@@ -272,6 +280,38 @@ static int devfreq_boost_thread(void *data)
 	return 0;
 }
 
+#ifdef CONFIG_DRM_MSM
+static int msm_drm_notifier_cb(struct notifier_block *nb, unsigned long action,
+			       void *data)
+{
+	struct df_boost_drv *d = container_of(nb, typeof(*d), msm_drm_notif);
+	int i, *blank = ((struct msm_drm_notifier *)data)->data;
+
+	/* Parse framebuffer blank events as soon as they occur */
+	if (action != MSM_DRM_EARLY_EVENT_BLANK)
+		return NOTIFY_OK;
+
+	/* Boost when the screen turns on and unboost when it turns off */
+	for (i = 0; i < DEVFREQ_MAX; i++) {
+		struct boost_dev *b = d->devices + i;
+
+		if (*blank == MSM_DRM_BLANK_UNBLANK_CUST) {
+			devfreq_boost_kick_wake(DEVFREQ_MSM_CPUBW, 1000);
+			set_bit(SCREEN_ON, &b->state);
+		} else if (*blank == MSM_DRM_BLANK_POWERDOWN_CUST) {
+			clear_bit(SCREEN_ON, &b->state);
+			clear_bit(WAKE_BOOST, &b->state);
+			clear_bit(MAX_BOOST, &b->state);
+			clear_bit(FLEX_BOOST, &b->state);
+			clear_bit(INPUT_BOOST, &b->state);
+			pr_info("Screen off, boosts turned off\n");
+			wake_up(&b->boost_waitq);
+		}
+	}
+
+	return NOTIFY_OK;
+}
+#else
 static int fb_notifier_cb(struct notifier_block *nb, unsigned long action,
 			  void *data)
 {
@@ -301,6 +341,7 @@ static int fb_notifier_cb(struct notifier_block *nb, unsigned long action,
 
 	return NOTIFY_OK;
 }
+#endif
 
 static void devfreq_boost_input_event(struct input_handle *handle,
 				      unsigned int type, unsigned int code,
@@ -414,7 +455,15 @@ static int __init devfreq_boost_init(void)
 		pr_err("Failed to register input handler, err: %d\n", ret);
 		goto stop_kthreads;
 	}
-
+#ifdef CONFIG_DRM_MSM
+	d->msm_drm_notif.notifier_call = msm_drm_notifier_cb;
+	d->msm_drm_notif.priority = INT_MAX-2;
+	ret = msm_drm_register_client(&d->msm_drm_notif);
+	if (ret) {
+		pr_err("Failed to register msm_drm_notifier, err: %d\n", ret);
+		goto unregister_handler;
+	}
+#else
 	d->fb_notif.notifier_call = fb_notifier_cb;
 	d->fb_notif.priority = INT_MAX-2;
 	ret = fb_register_client(&d->fb_notif);
@@ -422,6 +471,7 @@ static int __init devfreq_boost_init(void)
 		pr_err("Failed to register fb notifier, err: %d\n", ret);
 		goto unregister_handler;
 	}
+#endif
 
 	return 0;
 

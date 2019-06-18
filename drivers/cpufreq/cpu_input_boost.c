@@ -8,7 +8,11 @@
 
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
+#ifdef CONFIG_DRM_MSM
+#include <linux/msm_drm_notify.h>
+#else
 #include <linux/fb.h>
+#endif
 #include <linux/input.h>
 #include <linux/kthread.h>
 #include <linux/slab.h>
@@ -117,7 +121,11 @@ struct boost_drv {
 	struct delayed_work max_stune_unboost;
 	struct delayed_work gpu_unboost;
 	struct notifier_block cpu_notif;
+#ifdef CONFIG_DRM_MSM
+	struct notifier_block msm_drm_notif;
+#else
 	struct notifier_block fb_notif;
+#endif
 	struct kgsl_device *gpu_device;
 	struct kgsl_pwrctrl *gpu_pwr;
 	int input_stune_slot;
@@ -650,6 +658,40 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 	return NOTIFY_OK;
 }
 
+#ifdef CONFIG_DRM_MSM
+static int msm_drm_notifier_cb(struct notifier_block *nb,
+			       unsigned long action, void *data)
+{
+	struct boost_drv *b = container_of(nb, typeof(*b), msm_drm_notif);
+	struct msm_drm_notifier *evdata = data;
+	int *blank = evdata->data;
+
+	/* Parse framebuffer blank events as soon as they occur */
+	if (action != MSM_DRM_EARLY_EVENT_BLANK)
+		return NOTIFY_OK;
+
+	/* Boost when the screen turns on and unboost when it turns off */
+	if (*blank == MSM_DRM_BLANK_UNBLANK_CUST) {	
+		cpu_input_boost_kick_cluster1_wake(1000);
+		cpu_input_boost_kick_cluster2_wake(1000);	
+		set_bit(SCREEN_ON, &b->state);
+	} else if (*blank == MSM_DRM_BLANK_POWERDOWN_CUST) {
+		clear_bit(SCREEN_ON, &b->state);
+		clear_bit(INPUT_BOOST, &b->state);
+		clear_bit(FLEX_BOOST, &b->state);
+		clear_bit(CLUSTER1_BOOST, &b->state);
+		clear_bit(CLUSTER2_BOOST, &b->state);
+		clear_bit(CLUSTER1_WAKE_BOOST, &b->state);
+		clear_bit(CLUSTER2_WAKE_BOOST, &b->state);
+		clear_bit(INPUT_STUNE_BOOST, &b->state);
+		clear_bit(MAX_STUNE_BOOST, &b->state);
+		clear_bit(FLEX_STUNE_BOOST, &b->state);
+		pr_info("Screen off, boosts turned off\n");
+		wake_up(&b->boost_waitq);
+	}
+	return NOTIFY_OK;
+}
+#else
 static int fb_notifier_cb(struct notifier_block *nb, unsigned long action,
 			  void *data)
 {
@@ -680,6 +722,7 @@ static int fb_notifier_cb(struct notifier_block *nb, unsigned long action,
 	}
 	return NOTIFY_OK;
 }
+#endif
 
 static void cpu_input_boost_input_event(struct input_handle *handle,
 					unsigned int type, unsigned int code,
@@ -854,7 +897,15 @@ static int __init cpu_input_boost_init(void)
 		pr_err("Failed to register input handler, err: %d\n", ret);
 		goto unregister_cpu_notif;
 	}
-
+#ifdef CONFIG_DRM_MSM
+	b->msm_drm_notif.notifier_call = msm_drm_notifier_cb;
+	b->msm_drm_notif.priority = INT_MAX-2;
+	ret = msm_drm_register_client(&b->msm_drm_notif);
+	if (ret) {
+		pr_err("Failed to register msm_drm notifier, err: %d\n", ret);
+		goto unregister_handler;
+	}
+#else
 	b->fb_notif.notifier_call = fb_notifier_cb;
 	b->fb_notif.priority = INT_MAX-2;
 	ret = fb_register_client(&b->fb_notif);
@@ -862,6 +913,7 @@ static int __init cpu_input_boost_init(void)
 		pr_err("Failed to register fb notifier, err: %d\n", ret);
 		goto unregister_handler;
 	}
+#endif
 
 	boost_thread = kthread_run_low_power(cpu_boost_thread, b, "cpu_boostd");
 	if (IS_ERR(boost_thread)) {
@@ -877,7 +929,11 @@ static int __init cpu_input_boost_init(void)
 	return 0;
 
 unregister_drm_notif:
+#ifdef CONFIG_DRM_MSM
+	msm_drm_unregister_client(&b->msm_drm_notif);
+#else
 	fb_unregister_client(&b->fb_notif);
+#endif
 unregister_handler:
 	input_unregister_handler(&cpu_input_boost_input_handler);
 unregister_cpu_notif:
