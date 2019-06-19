@@ -8733,19 +8733,6 @@ static void op_heartbeat_work(struct work_struct *work)
 		&& !chg->temp_littel_cool_set_current_0_point_25c) {
 			chg->is_power_changed = true;
 		}
-	} else {
-		if (chg->cp_reason == POWER_SUPPLY_CP_WIRELESS) {
-			sec_charger = chg->sec_pl_present ?
-					POWER_SUPPLY_CHARGER_SEC_PL :
-					POWER_SUPPLY_CHARGER_SEC_NONE;
-			rc = smblib_select_sec_charger(chg, sec_charger,
-					POWER_SUPPLY_CP_NONE, false);
-			if (rc < 0)
-				dev_err(chg->dev, "Couldn't disable secondary charger rc=%d\n",
-					rc);
-		}
-
-		vote(chg->dc_suspend_votable, CHG_TERMINATION_VOTER, false, 0);
 	}
 	ffc_exit(chg);
 
