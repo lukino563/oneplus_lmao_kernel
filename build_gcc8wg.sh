@@ -12,12 +12,13 @@ clear
 THREAD="-j$(grep -c ^processor /proc/cpuinfo)"
 KERNEL="Image"
 DTBIMAGE="dtb"
-export CLANG_PATH=~/android/Toolchains/LLVM806/bin/
-export PATH=${CLANG_PATH}:${PATH}
-export CLANG_TRIPLE=aarch64-linux-gnu-
-export CROSS_COMPILE=${HOME}/android/Toolchains/aarch64-linux-android-4.9/bin/aarch64-linux-android- CC=clang CXX=clang++
-export CROSS_COMPILE_ARM32=${HOME}/android/Toolchains/arm-linux-androideabi-4.9/bin/arm-linux-androideabi- 
-export KBUILD_COMPILER_STRING=$(~/android/Toolchains/LLVM806/bin/clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')
+#export CLANG_PATH=~/android/Toolchains/clang/clang-r328903/bin/
+#export PATH=${CLANG_PATH}:${PATH}
+#export CLANG_TRIPLE=aarch64-linux-gnu-
+export SPL="2019-05"
+export CROSS_COMPILE=${HOME}/android/Toolchains/GCC8/bin/aarch64-opt-linux-android-
+export CROSS_COMPILE_ARM32=${HOME}/android/Toolchains/arm-linux-androideabi-8.2.1/bin/arm-opt-linux-androideabi-
+#export KBUILD_COMPILER_STRING=$(~/android/Toolchains/clang/clang-r328903/bin/clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')
 DEFCONFIG="smurf_defconfig"
 
 # Kernel Details
@@ -33,6 +34,7 @@ ZIMAGE_DIR="${HOME}/android/SmurfKernelOP7/arch/arm64/boot/"
 
 # Functions
 function clean_all {
+		#ccache -C
 		rm -rf $MODULES_DIR/*
 		rm -rf ~/android/SmurfKernelOP7/out/*
 		#git reset --hard > /dev/null 2>&1
@@ -43,11 +45,10 @@ function clean_all {
 }
 
 function make_kernel {
-		cp ~/android/SmurfKernelOP7/Makefile.clang ~/android/SmurfKernelOP7/Makefile
-		echo
-		make CC=clang CXX=clang++ O=out $DEFCONFIG
-		make CC=clang CXX=clang++ O=out $THREAD
-
+	     cp ~/android/SmurfKernelOP7/Makefile.gcc8wg ~/android/SmurfKernelOP7/Makefile
+	      echo
+              make ARCH=arm64 O=out $DEFCONFIG
+              make ARCH=arm64 O=out $THREAD
 }
 
 function make_modules {

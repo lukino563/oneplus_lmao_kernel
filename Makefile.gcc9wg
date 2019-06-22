@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
 VERSION = 4
 PATCHLEVEL = 14
-SUBLEVEL = 128
+SUBLEVEL = 129
 EXTRAVERSION =
 NAME = Petit Gorille
 
@@ -449,9 +449,9 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 KBUILD_CFLAGS	+= -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common -fshort-wchar -std=gnu89 $(call cc-option,-fno-PIE) \
 		   -mcpu=cortex-a76.cortex-a55+crypto -mtune=cortex-a76.cortex-a55 -fdiagnostics-color=always \
-		   -Wno-attribute-alias -fno-common -fshort-wchar -ffast-math -fgcse-sm -fipa-pta \
-		   -fgcse-las -fbranch-target-load-optimize -fno-asynchronous-unwind-tables\
-		   -flive-range-shrinkage -fvariable-expansion-in-unroller -funsafe-math-optimizations
+		   -Wno-attribute-alias -fno-common -fshort-wchar -ffast-math -fgcse-sm -fipa-pta -fforward-propagate \
+		   -fgcse-las -fbranch-target-load-optimize -fno-asynchronous-unwind-tables -foptimize-sibling-calls \
+		   -flive-range-shrinkage -fvariable-expansion-in-unroller -funsafe-math-optimizations -foptimize-sibling-calls
 KBUILD_CPPFLAGS := -D__KERNEL__
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
