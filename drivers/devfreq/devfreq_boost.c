@@ -49,9 +49,7 @@ struct boost_dev {
 	struct delayed_work max_unboost;
 	struct work_struct boost;
 	wait_queue_head_t boost_waitq;
-	unsigned long boost_freq;
 	unsigned long state;
-	atomic_long_t max_boost_expires;
 };
 
 struct df_boost_drv {
@@ -79,7 +77,6 @@ static void devfreq_flex_unboost(struct work_struct *work);
 					   devfreq_max_unboost, 0),		\
 	.boost_waitq =								\
 		__WAIT_QUEUE_HEAD_INITIALIZER((b).devices[dev].boost_waitq),	\
-	.boost_freq = freq							\
 }
 
 static struct df_boost_drv df_boost_drv_g __read_mostly = {
@@ -127,16 +124,6 @@ static void __devfreq_boost_kick_max(struct boost_dev *b,
 	if (!READ_ONCE(b->df) || !test_bit(SCREEN_ON, &b->state))
 		return;
 
-	do {
-		curr_expires = atomic_long_read(&b->max_boost_expires);
-		new_expires = jiffies + boost_jiffies;
-
-		/* Skip this boost if there's a longer boost in effect */
-		if (time_after(curr_expires, new_expires))
-			return;
-	} while (atomic_long_cmpxchg(&b->max_boost_expires, curr_expires,
-				     new_expires) != curr_expires);
-
 	if (!mod_delayed_work(b->wq_m, &b->max_unboost,
 			      msecs_to_jiffies(duration_ms))) {
 		set_bit(MAX_BOOST, &b->state);
@@ -160,16 +147,6 @@ static void __devfreq_boost_kick_wake(struct boost_dev *b,
 
 	if (!READ_ONCE(b->df) || test_bit(SCREEN_ON, &b->state))
 		return;
-
-	do {
-		curr_expires = atomic_long_read(&b->max_boost_expires);
-		new_expires = jiffies + boost_jiffies;
-
-		/* Skip this boost if there's a longer boost in effect */
-		if (time_after(curr_expires, new_expires))
-			return;
-	} while (atomic_long_cmpxchg(&b->max_boost_expires, curr_expires,
-				     new_expires) != curr_expires);
 
 	if (!mod_delayed_work(b->wq_m, &b->max_unboost,
 			      msecs_to_jiffies(duration_ms))) {
@@ -228,21 +205,22 @@ static void devfreq_update_boosts(struct boost_dev *b, unsigned long state)
 {
 	struct devfreq *df = b->df;
 
-	if (unlikely (READ_ONCE(b->df) && !test_bit(SCREEN_ON, &state))) {
+	if (likely(READ_ONCE(b->df)))  {
 		mutex_lock(&df->lock);
-		df->min_freq = df->profile->freq_table[0];
-		df->min_freq = test_bit(WAKE_BOOST, &state);
-		update_devfreq(df);
-		mutex_unlock(&df->lock);
-	} else if (READ_ONCE(b->df)) {
-		mutex_lock(&df->lock);
-		df->min_freq = test_bit(FLEX_BOOST, &state) ?
-			       devfreq_boost_freq_low :
-			       df->profile->freq_table[0];
-		df->min_freq = test_bit(INPUT_BOOST, &state) ?
-			       devfreq_boost_freq :
-			       df->profile->freq_table[0];
-		df->max_boost = test_bit(MAX_BOOST, &state);
+		if (!test_bit(SCREEN_ON, &state)) {
+			df->min_freq = df->profile->freq_table[0];
+			df->max_boost = test_bit(WAKE_BOOST, &state) ? 
+						true :
+						false;
+		} else {
+			df->min_freq = test_bit(FLEX_BOOST, &state) ?
+			      	min(devfreq_boost_freq_low, df->max_freq) :
+			       	df->profile->freq_table[0];
+			df->min_freq = test_bit(INPUT_BOOST, &state) ?
+			      	 min(devfreq_boost_freq, df->max_freq) :
+			       	df->profile->freq_table[0];
+			df->max_boost = test_bit(MAX_BOOST, &state);
+		}
 		update_devfreq(df);
 		mutex_unlock(&df->lock);
 	}
@@ -262,19 +240,14 @@ static int devfreq_boost_thread(void *data)
 
 	sched_setscheduler_nocheck(current, SCHED_FIFO, &sched_max_rt_prio);
 
-	while (1) {
-		bool should_stop = false;
-		unsigned long current_state;
+	while (!kthread_should_stop()) {
+		unsigned long curr_state;
 
 		wait_event(b->boost_waitq,
-			(current_state = READ_ONCE(b->state)) != old_state ||
+			(curr_state = READ_ONCE(b->state)) != old_state ||
 			kthread_should_stop());
-
-		if (should_stop)
-			break;
-
-		old_state = current_state;
-		devfreq_update_boosts(b, current_state);
+		old_state = curr_state;
+		devfreq_update_boosts(b, curr_state);
 	}
 
 	return 0;
