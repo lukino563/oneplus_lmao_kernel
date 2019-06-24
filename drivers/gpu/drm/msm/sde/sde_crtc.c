@@ -26,6 +26,8 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_flip_work.h>
 #include <linux/clk/qcom.h>
+#include <linux/cpu_input_boost.h>
+#include <linux/devfreq_boost.h>
 
 #include "sde_kms.h"
 #include "sde_hw_lm.h"
@@ -5630,7 +5632,7 @@ static int sde_crtc_onscreenfinger_atomic_check(struct sde_crtc_state *cstate,
 		}
 	}
 
-	if(aod_index <0)
+	if(aod_index <0) {
 		oneplus_aod_hid = 0;
 		aod_layer_hide = 0;
 	}
@@ -5638,7 +5640,7 @@ static int sde_crtc_onscreenfinger_atomic_check(struct sde_crtc_state *cstate,
 	if(fppressed_index_rt < 0){
 		oneplus_aod_fod = 0;
 		oneplus_aod_dc = 0;
-    }
+	}
 
     if(finger_type){
         if (aod_index >= 0) {
