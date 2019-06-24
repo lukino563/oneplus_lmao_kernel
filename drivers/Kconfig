@@ -225,5 +225,4 @@ source "drivers/param_read_write/Kconfig"
 
 source "drivers/set_os/Kconfig"
 
-source "drivers/oem_debug/Kconfig"
 endmenu

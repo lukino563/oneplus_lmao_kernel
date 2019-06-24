@@ -30,7 +30,7 @@
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/spinlock.h>
-#include <linux/oem_force_dump.h>
+//#include <linux/oem_force_dump.h>
 
 struct gpio_button_data {
 	const struct gpio_keys_button *button;
@@ -372,7 +372,7 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 		return;
 	}
 
-	oem_check_force_dump_key(button->code, state);
+	//oem_check_force_dump_key(button->code, state);
 
 	if (type == EV_ABS) {
 		if (state)
