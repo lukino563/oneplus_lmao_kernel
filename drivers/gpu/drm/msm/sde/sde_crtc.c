@@ -5610,8 +5610,9 @@ static int sde_crtc_onscreenfinger_atomic_check(struct sde_crtc_state *cstate,
 
 	if (fp_mode == 1) {
 		/*Kick for fp scan*/
-    		cpu_input_boost_kick_max(250);
-    		devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 250);
+    		cpu_input_boost_kick_cluster1_wake(250);
+		cpu_input_boost_kick_cluster2_wake(250);
+		devfreq_boost_kick_wake(DEVFREQ_MSM_CPUBW, 250);
 	}
 
 	if (!is_oos()) {
