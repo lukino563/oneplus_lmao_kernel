@@ -191,3 +191,4 @@ obj-$(CONFIG_ESOC)              += esoc/
 obj-y              += oneplus/
 obj-y  += param_read_write/
 obj-$(CONFIG_UNIFIED)		+= set_os/
+obj-$(CONFIG_UNIFIED_V2)	+= set_os_v2/
