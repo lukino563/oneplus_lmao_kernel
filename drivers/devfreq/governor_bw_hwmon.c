@@ -531,7 +531,6 @@ int update_bw_hwmon(struct bw_hwmon *hwmon)
 	devfreq_monitor_start(df);
 	mutex_unlock(&node->mon_lock);
 
-	mutex_unlock(&node->mon_lock);
 	return 0;
 }
 
