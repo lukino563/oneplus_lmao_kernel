@@ -2109,7 +2109,7 @@ long _do_fork(unsigned long clone_flags,
 #ifdef CONFIG_CPU_INPUT_BOOST
 	/* Boost CPU to the max for 50 ms when userspace launches an app */
 	if (current)  {
-		if (task_is_zygote(current)) {
+		if (task_is_zygote(current) || task_is_embryo(current)) {
 			cpu_input_boost_kick_cluster1(750);
 			cpu_input_boost_kick_cluster2(750);
 #ifdef CONFIG_DEVFREQ_BOOST

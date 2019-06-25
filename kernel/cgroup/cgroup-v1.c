@@ -561,7 +561,7 @@ static ssize_t __cgroup1_procs_write(struct kernfs_open_file *of,
 #ifdef CONFIG_CPU_INPUT_BOOST
 	if (of && task) {
 		if (!ret && !threadgroup && !strcmp(of->kn->parent->name, "top-app") &&
-	    	task_is_zygote(task->parent)) {
+	    	(task_is_zygote(task->parent) || task_is_embryo(task->parent))) {
 			if (task->cpu < 4)
 				cpu_input_boost_kick_cluster1(1000);
 			else if ((task->cpu > 3) && (task->cpu < 7))
