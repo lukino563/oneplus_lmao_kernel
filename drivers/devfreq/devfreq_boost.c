@@ -30,6 +30,8 @@ static unsigned int devfreq_boost_freq __read_mostly = CONFIG_DEVFREQ_MSM_CPUBW_
 
 module_param(flex_boost_duration, short, 0644);
 module_param(input_boost_duration, short, 0644);
+module_param(devfreq_boost_freq, uint, 0644);
+module_param(devfreq_boost_freq_low, uint, 0644);
 
 enum {
 	SCREEN_ON,
@@ -205,25 +207,23 @@ static void devfreq_update_boosts(struct boost_dev *b, unsigned long state)
 {
 	struct devfreq *df = b->df;
 
-	if (likely(READ_ONCE(b->df)))  {
-		mutex_lock(&df->lock);
-		if (!test_bit(SCREEN_ON, &state)) {
-			df->min_freq = df->profile->freq_table[0];
-			df->max_boost = test_bit(WAKE_BOOST, &state) ? 
-						true :
-						false;
-		} else {
-			df->min_freq = test_bit(FLEX_BOOST, &state) ?
-			      	min(devfreq_boost_freq_low, df->max_freq) :
-			       	df->profile->freq_table[0];
-			df->min_freq = test_bit(INPUT_BOOST, &state) ?
-			      	 min(devfreq_boost_freq, df->max_freq) :
-			       	df->profile->freq_table[0];
+	mutex_lock(&df->lock);
+	if (!test_bit(SCREEN_ON, &state)) {
+		df->min_freq = df->profile->freq_table[0];
+		df->max_boost = test_bit(WAKE_BOOST, &state) ? 
+					true :
+					false;
+	} else {
+		df->min_freq = test_bit(FLEX_BOOST, &state) ?
+			min(devfreq_boost_freq_low, df->max_freq) :
+			df->profile->freq_table[0];
+		df->min_freq = test_bit(INPUT_BOOST, &state) ?
+			min(devfreq_boost_freq, df->max_freq) :
+			df->profile->freq_table[0];
 			df->max_boost = test_bit(MAX_BOOST, &state);
-		}
-		update_devfreq(df);
-		mutex_unlock(&df->lock);
 	}
+	update_devfreq(df);
+	mutex_unlock(&df->lock);
 }
 
 
