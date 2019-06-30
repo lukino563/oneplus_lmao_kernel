@@ -1157,6 +1157,9 @@ static void ipa3_q6_clnt_svc_arrive(struct work_struct *work)
 	if (!send_qmi_init_q6)
 		return;
 
+	if (!send_qmi_init_q6)
+		return;
+
 	IPAWANDBG("Q6 QMI service available now\n");
 	/* Initialize modem IPA-driver */
 	IPAWANDBG("send ipa3_qmi_init_modem_send_sync_msg to modem\n");
@@ -1212,7 +1215,9 @@ static void ipa3_q6_clnt_svc_arrive(struct work_struct *work)
 		IPAWANERR("not send indication (%d)\n",
 		ipa3_qmi_indication_fin);
 	}
+
 	send_qmi_init_q6 = false;
+
 }
 
 static void ipa3_q6_clnt_svc_exit(struct work_struct *work)
