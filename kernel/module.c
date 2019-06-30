@@ -1285,10 +1285,11 @@ static int check_version(const struct load_info *info,
 	unsigned int versindex = info->index.vers;
 	unsigned int i, num_versions;
 	struct modversion_info *versions;
-
+if (IS_ENABLED(CONFIG_FORCE_WLAN_TO_LOAD)) {
 	/* Force wlan to load */
 	if (!strncmp("wlan", mod->name, 4))
 		return 1;
+}
 
 	/* Exporting module didn't supply crcs?  OK, we're already tainted. */
 	if (!crc)
@@ -3025,9 +3026,10 @@ static int check_modinfo(struct module *mod, struct load_info *info, int flags)
 {
 	const char *modmagic = get_modinfo(info, "vermagic");
 	int err;
-
+if (IS_ENABLED(CONFIG_FORCE_WLAN_TO_LOAD)) {
 	if(!strncmp("wlan", mod->name, 4))
 		goto end;
+}
 
 	if (flags & MODULE_INIT_IGNORE_VERMAGIC)
 		modmagic = NULL;
@@ -3042,7 +3044,6 @@ static int check_modinfo(struct module *mod, struct load_info *info, int flags)
 		       info->name, modmagic, vermagic);
 		return -ENOEXEC;
 	}
-
 end:
 	if (!get_modinfo(info, "intree")) {
 		if (!test_taint(TAINT_OOT_MODULE))
