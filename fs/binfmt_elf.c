@@ -740,12 +740,6 @@ static int load_elf_binary(struct linux_binprm *bprm)
 			    elf_ppnt->p_filesz < 2)
 				goto out_free_ph;
 
-			retval = -ENOMEM;
-			elf_interpreter = kmalloc(elf_ppnt->p_filesz,
-						  GFP_KERNEL);
-			if (!elf_interpreter)
-				goto out_free_ph;
-
 			interp_present = true;
 			pos = elf_ppnt->p_offset;
 			retval = kernel_read(bprm->file, elf_interpreter,
