@@ -244,34 +244,6 @@ static void ion_buffer_kmap_put(struct ion_buffer *buffer)
 	}
 }
 
-static struct scatterlist *ion_sg_alloc(unsigned int nents, gfp_t gfp_mask)
-{
-	if (nents == SG_MAX_SINGLE_ALLOC)
-		return kmem_cache_alloc(ion_page_pool, gfp_mask);
-
-	return kmalloc(nents * sizeof(struct scatterlist), gfp_mask);
-}
-
-static void ion_sg_free(struct scatterlist *sg, unsigned int nents)
-{
-	if (nents == SG_MAX_SINGLE_ALLOC)
-		kmem_cache_free(ion_page_pool, sg);
-	else
-		kfree(sg);
-}
-
-static int ion_sg_alloc_table(struct sg_table *table, unsigned int nents,
-			      gfp_t gfp_mask)
-{
-	return __sg_alloc_table(table, nents, SG_MAX_SINGLE_ALLOC, NULL,
-				gfp_mask, ion_sg_alloc);
-}
-
-static void ion_sg_free_table(struct sg_table *table)
-{
-	__sg_free_table(table, SG_MAX_SINGLE_ALLOC, false, ion_sg_free);
-}
-
 static struct sg_table *dup_sg_table(struct sg_table *table)
 {
 	struct sg_table *new_table;
@@ -282,7 +254,7 @@ static struct sg_table *dup_sg_table(struct sg_table *table)
 	if (!new_table)
 		return ERR_PTR(-ENOMEM);
 
-	ret = ion_sg_alloc_table(new_table, table->nents);
+	ret = sg_alloc_table(new_table, table->nents, GFP_KERNEL);
 	if (ret) {
 		kmem_cache_free(ion_sg_table_pool, new_table);
 		return ERR_PTR(-ENOMEM);
@@ -301,7 +273,7 @@ static struct sg_table *dup_sg_table(struct sg_table *table)
 
 static void free_duped_table(struct sg_table *table)
 {
-	ion_sg_free_table(table);
+	sg_free_table(table);
 	kmem_cache_free(ion_sg_table_pool, table);
 }
 
