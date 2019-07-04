@@ -46,6 +46,8 @@
 #define QDSS_IOVA_START 0x80001000
 #define MIN_PAYLOAD_SIZE 3
 
+#define VERSION_HANA (0x5 << 28 | 0x10 << 16)
+
 static struct hal_device_data hal_ctxt;
 
 #define TZBSP_MEM_PROTECT_VIDEO_VAR 0x8
