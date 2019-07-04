@@ -23,7 +23,7 @@ export CROSS_COMPILE_ARM32=${HOME}/android/Toolchains/gcc9eabi/bin/arm-eabi-
 DEFCONFIG="smurfwdrv_defconfig"
 
 # Kernel Details
-VER=".2.1.0.stock.wifi.drv"
+VER=".2.1.1.stock.wifi.drv"
 
 # Paths
 KERNEL_DIR=`pwd`
