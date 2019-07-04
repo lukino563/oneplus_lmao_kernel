@@ -830,7 +830,7 @@ static int a6xx_gmu_gfx_rail_on(struct kgsl_device *device)
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 	struct gmu_device *gmu = KGSL_GMU_DEVICE(device);
-	unsigned int perf_idx = pwr->num_pwrlevels - (pwr->num_pwrlevels - 2);
+	unsigned int perf_idx = pwr->num_pwrlevels - (pwr->num_pwrlevels - 1);
 	uint32_t default_opp = gmu->rpmh_votes.gx_votes[perf_idx];
 
 	gmu_core_regwrite(device, A6XX_GMU_BOOT_SLUMBER_OPTION,
