@@ -47,7 +47,6 @@
 #include "ion_secure_util.h"
 
 static struct ion_device *internal_dev;
-static struct kmem_cache *ion_page_pool;
 static struct kmem_cache *ion_sg_table_pool;
 
 
@@ -283,7 +282,7 @@ static struct sg_table *dup_sg_table(struct sg_table *table)
 	if (!new_table)
 		return ERR_PTR(-ENOMEM);
 
-	ret = ion_sg_alloc_table(new_table, table->nents, GFP_KERNEL);
+	ret = ion_sg_alloc_table(new_table, table->nents);
 	if (ret) {
 		kmem_cache_free(ion_sg_table_pool, new_table);
 		return ERR_PTR(-ENOMEM);
@@ -1274,14 +1273,6 @@ struct ion_device *ion_device_create(void)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	ion_page_pool = kmem_cache_create("ion_page", PAGE_SIZE, PAGE_SIZE,
-					  SLAB_HWCACHE_ALIGN, NULL);
-	if (!ion_page_pool) {
-		kmem_cache_destroy(ion_sg_table_pool);
-		kfree(idev);
-		return ERR_PTR(-ENOMEM);
-	}
-
 	idev->dev.minor = MISC_DYNAMIC_MINOR;
 	idev->dev.name = "ion";
 	idev->dev.fops = &ion_fops;
@@ -1289,7 +1280,6 @@ struct ion_device *ion_device_create(void)
 	ret = misc_register(&idev->dev);
 	if (ret) {
 		pr_err("ion: failed to register misc device.\n");
-		kmem_cache_destroy(ion_page_pool);
 		kmem_cache_destroy(ion_sg_table_pool);
 		kfree(idev);
 		return ERR_PTR(ret);
