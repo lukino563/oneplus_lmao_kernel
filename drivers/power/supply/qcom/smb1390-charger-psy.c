@@ -1274,6 +1274,167 @@ out_work:
 	return rc;
 }
 
+static enum power_supply_property smb1390_cp_slave_props[] = {
+	POWER_SUPPLY_PROP_INPUT_CURRENT_MAX,
+	POWER_SUPPLY_PROP_CURRENT_CAPABILITY,
+};
+
+static int smb1390_slave_prop_is_writeable(struct power_supply *psy,
+				enum power_supply_property prop)
+{
+	return 0;
+}
+
+static int smb1390_cp_slave_get_prop(struct power_supply *psy,
+		enum power_supply_property psp,
+		union power_supply_propval *val)
+{
+	struct smb1390 *chip = power_supply_get_drvdata(psy);
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_INPUT_CURRENT_MAX:
+		val->intval = 0;
+		if (!chip->ilim_votable)
+			chip->ilim_votable = find_votable("CP_ILIM");
+		if (chip->ilim_votable)
+			val->intval =
+				get_effective_result_locked(chip->ilim_votable);
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_CAPABILITY:
+		val->intval = (int)chip->current_capability;
+		break;
+	default:
+		smb1390_dbg(chip, PR_MISC, "SMB 1390 slave power supply get prop %d not supported\n",
+			psp);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int smb1390_cp_slave_set_prop(struct power_supply *psy,
+		enum power_supply_property psp,
+		const union power_supply_propval *val)
+{
+	struct smb1390 *chip = power_supply_get_drvdata(psy);
+	int rc = 0;
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_INPUT_CURRENT_MAX:
+		rc = smb1390_set_ilim(chip, val->intval);
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_CAPABILITY:
+		chip->current_capability = (enum isns_mode)val->intval;
+		rc = smb1390_isns_mode_control(chip, val->intval);
+		break;
+	default:
+		smb1390_dbg(chip, PR_MISC, "SMB 1390 slave power supply set prop %d not supported\n",
+			psp);
+		return -EINVAL;
+	}
+
+	return 0;
+};
+
+static const struct power_supply_desc cps_psy_desc = {
+	.name = "cp_slave",
+	.type = POWER_SUPPLY_TYPE_PARALLEL,
+	.properties = smb1390_cp_slave_props,
+	.num_properties = ARRAY_SIZE(smb1390_cp_slave_props),
+	.get_property = smb1390_cp_slave_get_prop,
+	.set_property = smb1390_cp_slave_set_prop,
+	.property_is_writeable = smb1390_slave_prop_is_writeable,
+};
+
+static int smb1390_init_cps_psy(struct smb1390 *chip)
+{
+	struct power_supply_config cps_cfg = {};
+
+	cps_cfg.drv_data = chip;
+	cps_cfg.of_node = chip->dev->of_node;
+	chip->cps_psy = devm_power_supply_register(chip->dev,
+						  &cps_psy_desc,
+						  &cps_cfg);
+	if (IS_ERR(chip->cps_psy)) {
+		pr_err("Couldn't register CP slave power supply\n");
+		return PTR_ERR(chip->cps_psy);
+	}
+
+	return 0;
+}
+
+static int smb1390_slave_probe(struct smb1390 *chip)
+{
+	int stat, rc;
+
+	/* a "hello" read to test the presence of the slave PMIC */
+	rc = smb1390_read(chip, CORE_STATUS1_REG, &stat);
+	if (rc < 0) {
+		pr_err("Couldn't find slave SMB1390\n");
+		return -EINVAL;
+	}
+
+	rc = smb1390_triple_init_hw(chip);
+	if (rc < 0)
+		return rc;
+
+	rc = smb1390_init_cps_psy(chip);
+	if (rc < 0)
+		pr_err("Couldn't initialize cps psy rc=%d\n", rc);
+
+	return rc;
+}
+
+static int smb1390_probe(struct platform_device *pdev)
+{
+	struct smb1390 *chip;
+	int rc;
+
+	chip = devm_kzalloc(&pdev->dev, sizeof(*chip), GFP_KERNEL);
+	if (!chip)
+		return -ENOMEM;
+
+	chip->dev = &pdev->dev;
+	chip->die_temp = -ENODATA;
+	chip->disabled = true;
+
+	chip->regmap = dev_get_regmap(chip->dev->parent, NULL);
+	if (!chip->regmap) {
+		pr_err("Couldn't get regmap\n");
+		return -EINVAL;
+	}
+
+	platform_set_drvdata(pdev, chip);
+	chip->cp_role = (int)of_device_get_match_data(chip->dev);
+	switch (chip->cp_role) {
+	case CP_MASTER:
+		rc = smb1390_master_probe(chip);
+		break;
+	case CP_SLAVE:
+		rc = smb1390_slave_probe(chip);
+		break;
+	default:
+		pr_err("Couldn't find a matching role %d\n", chip->cp_role);
+		rc = -EINVAL;
+		goto cleanup;
+	}
+
+	if (rc < 0) {
+		if (rc != -EPROBE_DEFER)
+			pr_err("Couldn't probe SMB1390 %s rc=%d\n",
+			       chip->cp_role ? "Slave" : "Master", rc);
+		goto cleanup;
+	}
+
+	pr_info("smb1390 %s probed successfully\n", chip->cp_role ? "Slave" :
+		"Master");
+	return 0;
+
+cleanup:
+	platform_set_drvdata(pdev, NULL);
+	return rc;
+}
+
 static int smb1390_remove(struct platform_device *pdev)
 {
 	struct smb1390 *chip = platform_get_drvdata(pdev);
@@ -1318,8 +1479,17 @@ static int smb1390_resume(struct device *dev)
 	struct smb1390 *chip = dev_get_drvdata(dev);
 
 	chip->suspended = false;
-	rerun_election(chip->ilim_votable);
-	rerun_election(chip->disable_votable);
+
+	/* ILIM rerun is applicable for both master and slave */
+	if (!chip->ilim_votable)
+		chip->ilim_votable = find_votable("CP_ILIM");
+
+	if (chip->ilim_votable)
+		rerun_election(chip->ilim_votable);
+
+	/* Run disable votable for master only */
+	if (chip->cp_role == CP_MASTER)
+		rerun_election(chip->disable_votable);
 
 	return 0;
 }
