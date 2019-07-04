@@ -1201,7 +1201,7 @@ static int a6xx_gmu_notify_slumber(struct kgsl_device *device)
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 	struct gmu_device *gmu = KGSL_GMU_DEVICE(device);
 	int bus_level = pwr->pwrlevels[pwr->num_pwrlevels - 1].bus_freq;
-	int perf_idx = gmu->num_gpupwrlevels - (pwr->num_pwrlevels - 2);
+	int perf_idx = gmu->num_gpupwrlevels - (pwr->num_pwrlevels - 1);
 	int ret, state;
 
 	/* Disable the power counter so that the GMU is not busy */
