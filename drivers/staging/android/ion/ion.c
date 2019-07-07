@@ -279,19 +279,19 @@ static struct sg_table *dup_sg_table(struct sg_table *table)
 	int ret, i;
 	struct scatterlist *sg, *new_sg;
 
-	new_table = kzalloc(sizeof(*new_table), GFP_KERNEL);
+	new_table = kmem_cache_alloc(ion_sg_table_pool, GFP_KERNEL);
 	if (!new_table)
 		return ERR_PTR(-ENOMEM);
 
-	ret = sg_alloc_table(new_table, table->nents, GFP_KERNEL);
+	ret = ion_sg_alloc_table(new_table, table->nents, GFP_KERNEL);
 	if (ret) {
-		kfree(new_table);
+		kmem_cache_free(ion_sg_table_pool, new_table);
 		return ERR_PTR(-ENOMEM);
 	}
 
 	new_sg = new_table->sgl;
 	for_each_sg(table->sgl, sg, table->nents, i) {
-		memcpy(new_sg, sg, sizeof(*sg));
+		*new_sg = *sg;
 		sg_dma_address(new_sg) = 0;
 		sg_dma_len(new_sg) = 0;
 		new_sg = sg_next(new_sg);
@@ -302,8 +302,8 @@ static struct sg_table *dup_sg_table(struct sg_table *table)
 
 static void free_duped_table(struct sg_table *table)
 {
-	sg_free_table(table);
-	kfree(table);
+	ion_sg_free_table(table);
+	kmem_cache_free(ion_sg_table_pool, table);
 }
 
 struct ion_dma_buf_attachment {
