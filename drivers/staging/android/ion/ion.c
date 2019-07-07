@@ -691,6 +691,15 @@ static int __ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
 							    sync_only_mapped);
 		mutex_unlock(&buffer->lock);
 		goto out;
+	if (table->nents <= SG_MAX_SINGLE_ALLOC) {
+		memcpy(table->sgl, orig_table->sgl,
+		       table->nents * sizeof(*table->sgl));
+	} else {
+		sg_orig = orig_table->sgl;
+		for_each_sg(table->sgl, sg, table->nents, i) {
+			*sg = *sg_orig;
+			sg_orig = sg_next(sg_orig);
+		}
 	}
 
 	list_for_each_entry(a, &buffer->attachments, list) {
