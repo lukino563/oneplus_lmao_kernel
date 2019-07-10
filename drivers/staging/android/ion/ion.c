@@ -260,12 +260,17 @@ static struct sg_table *dup_sg_table(struct sg_table *table)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	new_sg = new_table->sgl;
-	for_each_sg(table->sgl, sg, table->nents, i) {
-		*new_sg = *sg;
-		sg_dma_address(new_sg) = 0;
-		sg_dma_len(new_sg) = 0;
-		new_sg = sg_next(new_sg);
+	if (table->nents <= SG_MAX_SINGLE_ALLOC) {
+		memcpy(new_table->sgl, table->sgl,
+		       new_table->nents * sizeof(*new_table->sgl));
+	} else {
+		new_sg = new_table->sgl;
+		for_each_sg(table->sgl, sg, table->nents, i) {
+			*new_sg = *sg;
+			sg_dma_address(new_sg) = 0;
+			sg_dma_len(new_sg) = 0;
+			new_sg = sg_next(new_sg);
+		}
 	}
 
 	return new_table;
@@ -691,15 +696,6 @@ static int __ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
 							    sync_only_mapped);
 		mutex_unlock(&buffer->lock);
 		goto out;
-	if (table->nents <= SG_MAX_SINGLE_ALLOC) {
-		memcpy(table->sgl, orig_table->sgl,
-		       table->nents * sizeof(*table->sgl));
-	} else {
-		sg_orig = orig_table->sgl;
-		for_each_sg(table->sgl, sg, table->nents, i) {
-			*sg = *sg_orig;
-			sg_orig = sg_next(sg_orig);
-		}
 	}
 
 	list_for_each_entry(a, &buffer->attachments, list) {
