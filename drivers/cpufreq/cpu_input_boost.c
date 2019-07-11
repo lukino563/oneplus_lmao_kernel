@@ -41,6 +41,7 @@ static unsigned int remove_input_boost_freq_perf __read_mostly = CONFIG_REMOVE_I
 static unsigned int remove_input_boost_freq_gold __read_mostly = CONFIG_REMOVE_INPUT_BOOST_FREQ_GOLD;
 static unsigned int gpu_boost_freq __read_mostly = CONFIG_GPU_BOOST_FREQ;
 static unsigned int gpu_min_freq __read_mostly = CONFIG_GPU_MIN_FREQ;
+static unsigned int gpu_sleep_freq __read_mostly = 257; 
 static unsigned short input_boost_duration __read_mostly = CONFIG_INPUT_BOOST_DURATION_MS;
 static unsigned short flex_boost_duration __read_mostly = CONFIG_FLEX_BOOST_DURATION_MS;
 static  unsigned int input_thread_prio __read_mostly = CONFIG_INPUT_THREAD_PRIORITY;
@@ -657,7 +658,8 @@ static int fb_notifier_cb(struct notifier_block *nb, unsigned long action,
 	/* Boost when the screen turns on and unboost when it turns off */
 	if (*blank == FB_BLANK_UNBLANK) {
 		cpu_input_boost_kick_cluster1_wake(1000);
-		cpu_input_boost_kick_cluster2_wake(1000);	
+		cpu_input_boost_kick_cluster2_wake(1000);
+		update_gpu_boost(b, gpu_min_freq);	
 		set_bit(SCREEN_ON, &b->state);
 	} else {
 		clear_bit(SCREEN_ON, &b->state);
@@ -670,6 +672,7 @@ static int fb_notifier_cb(struct notifier_block *nb, unsigned long action,
 		clear_bit(INPUT_STUNE_BOOST, &b->state);
 		clear_bit(MAX_STUNE_BOOST, &b->state);
 		clear_bit(FLEX_STUNE_BOOST, &b->state);
+		update_gpu_boost(b, gpu_sleep_freq);
 		wake_up(&b->boost_waitq);
 	}
 	return NOTIFY_OK;
