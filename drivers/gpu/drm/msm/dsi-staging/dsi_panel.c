@@ -32,6 +32,7 @@
 #include "sde_crtc.h"
 #include "sde_rm.h"
 #include "sde_trace.h"
+#include <linux/set_os.h>
 
 #ifdef CONFIG_KLAPSE
 #include <linux/klapse.h>
@@ -4668,16 +4669,17 @@ int dsi_panel_post_unprepare(struct dsi_panel *panel)
 			   panel->name, rc);
 		goto error;
 	}
-	if (!tp_1v8_power) {
-		if (panel->tp_enable1v8_gpio > 0) {
-			pr_err("disable tp 1v8 gpio\n");
-			ret = gpio_direction_output(panel->tp_enable1v8_gpio, 0);
-			if (ret) {
-				pr_err("disable the enable1v8_gpio failed.\n");
-				return ret;
+	if (is_oos)
+		if (!tp_1v8_power) {
+			if (panel->tp_enable1v8_gpio > 0) {
+				pr_err("disable tp 1v8 gpio\n");
+				ret = gpio_direction_output(panel->tp_enable1v8_gpio, 0);
+				if (ret) {
+					pr_err("disable the enable1v8_gpio failed.\n");
+					return ret;
+				}
 			}
 		}
-	}
 
 error:
 	mutex_unlock(&panel->panel_lock);

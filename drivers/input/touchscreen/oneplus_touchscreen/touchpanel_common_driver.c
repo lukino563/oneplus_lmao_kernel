@@ -1253,6 +1253,7 @@ static ssize_t proc_gesture_control_write(struct file *file, const char __user *
 	    mutex_lock(&ts->mutex);
 	    if (ts->gesture_enable != value) {
 		ts->gesture_enable = value;
+		if (is_oos())
 			tp_1v8_power = ts->gesture_enable;
 		TPD_INFO("%s: gesture_enable = %d, is_suspended = %d\n", __func__, ts->gesture_enable, ts->is_suspended);
 		if (ts->is_incell_panel && (ts->suspend_state == TP_RESUME_EARLY_EVENT) && (ts->tp_resume_order == LCD_TP_RESUME)) {
@@ -4642,7 +4643,7 @@ int register_common_touch_device(struct touchpanel_data *pdata)
     int cpu;
 
     int ret = -1;
-
+ 
     TPD_INFO("%s  is called\n", __func__);
 
 	//step : FTM process
