@@ -41,7 +41,7 @@ static unsigned int remove_input_boost_freq_perf __read_mostly = CONFIG_REMOVE_I
 static unsigned int remove_input_boost_freq_gold __read_mostly = CONFIG_REMOVE_INPUT_BOOST_FREQ_GOLD;
 static unsigned int gpu_boost_freq __read_mostly = CONFIG_GPU_BOOST_FREQ;
 static unsigned int gpu_min_freq __read_mostly = CONFIG_GPU_MIN_FREQ;
-static unsigned int gpu_sleep_freq __read_mostly = 257; 
+static unsigned int gpu_sleep_freq __read_mostly = 200; 
 static unsigned short input_boost_duration __read_mostly = CONFIG_INPUT_BOOST_DURATION_MS;
 static unsigned short flex_boost_duration __read_mostly = CONFIG_FLEX_BOOST_DURATION_MS;
 static  unsigned int input_thread_prio __read_mostly = CONFIG_INPUT_THREAD_PRIORITY;
@@ -267,6 +267,8 @@ static void update_gpu_boost(struct boost_drv *b, int freq)
 		level=6;
 	if (freq==257)
 		level=7;
+	if (freq==200)
+		level=8;
 	b->gpu_pwr->min_pwrlevel=level;
 }
 
