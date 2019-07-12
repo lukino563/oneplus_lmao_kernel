@@ -261,6 +261,10 @@ static void update_gpu_boost(struct boost_drv *b, int freq)
 {
 	int level;
 	if (gpu_boost_freq==0) return;
+	if (!test_bit(SCREEN_ON, &b->state)) {
+		level=8;
+		return;
+	}
 	if (freq==427)
 		level=5;
 	if (freq==345)
@@ -660,9 +664,9 @@ static int fb_notifier_cb(struct notifier_block *nb, unsigned long action,
 	/* Boost when the screen turns on and unboost when it turns off */
 	if (*blank == FB_BLANK_UNBLANK) {
 		cpu_input_boost_kick_cluster1_wake(1000);
-		cpu_input_boost_kick_cluster2_wake(1000);
-		update_gpu_boost(b, gpu_min_freq);	
+		cpu_input_boost_kick_cluster2_wake(1000);	
 		set_bit(SCREEN_ON, &b->state);
+		update_gpu_boost(b, gpu_min_freq);
 	} else {
 		clear_bit(SCREEN_ON, &b->state);
 		clear_bit(INPUT_BOOST, &b->state);
