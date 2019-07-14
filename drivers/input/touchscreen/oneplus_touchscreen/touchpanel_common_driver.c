@@ -1220,6 +1220,7 @@ static ssize_t proc_gesture_control_write(struct file *file, const char __user *
     struct touchpanel_data *ts = PDE_DATA(file_inode(file));
     int enabled = 0;
     char page[PAGESIZE];
+	if (is_oos()) {
 	    if (count > 2)
 		return count;
 	    if (!ts)
@@ -1264,7 +1265,7 @@ static ssize_t proc_gesture_control_write(struct file *file, const char __user *
 		TPD_INFO("%s: do not do same operator :%d\n", __func__, value);
 	    }
 	    mutex_unlock(&ts->mutex);
-
+	}
     return count;
 }
 
@@ -1275,11 +1276,11 @@ static ssize_t proc_gesture_control_read(struct file *file, char __user *user_bu
     struct touchpanel_data *ts = PDE_DATA(file_inode(file));
     if (!ts)
 	return count;
-
-    TPD_DEBUG("gesture_enable is: %d\n", ts->gesture_enable);
-    ret = sprintf(page, "%d\n", ts->gesture_enable);
-    ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
-
+    if (is_oos()) {
+    	TPD_DEBUG("gesture_enable is: %d\n", ts->gesture_enable);
+    	ret = sprintf(page, "%d\n", ts->gesture_enable);
+    	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
+    }
     return ret;
 }
 
@@ -2404,18 +2405,22 @@ static DEVICE_ATTR(tp_fw_update, 0644, sec_update_fw_show, sec_update_fw_store);
 	static ssize_t name##_enable_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos) \
 	{ \
 		int ret = 0; \
-		char page[PAGESIZE]; \
-		ret = sprintf(page, "%d\n", out); \
-		ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page)); \
+		if (is_oos()) { \
+			char page[PAGESIZE]; \
+			ret = sprintf(page, "%d\n", out); \
+			ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page)); \
+		} \
 		return ret; \
 	} \
 	static ssize_t name##_enable_write_func(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos) \
 	{ \
 		int enabled = 0; \
-		char page[PAGESIZE] = {0}; \
-		copy_from_user(page, user_buf, count); \
-		sscanf(page, "%d", &enabled); \
-		out = enabled > 0 ? 1 : 0; \
+		if (!is_oos()) { \
+			char page[PAGESIZE] = {0}; \
+			copy_from_user(page, user_buf, count); \
+			sscanf(page, "%d", &enabled); \
+			out = enabled > 0 ? 1 : 0; \
+		} \
 		return count; \
 	} \
 	static const struct file_operations name##_enable_proc_fops = { \
