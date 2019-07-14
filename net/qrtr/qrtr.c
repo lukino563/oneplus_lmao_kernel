@@ -761,7 +761,13 @@ int qrtr_endpoint_post(struct qrtr_endpoint *ep, const void *data, size_t len)
 	    cb->type != QRTR_TYPE_RESUME_TX)
 		goto err;
 
-	skb_put_data(skb, data + hdrlen, size);
+	if (frag) {
+		skb->data_len = size;
+		skb->len = size;
+		skb_store_bits(skb, 0, data + hdrlen, size);
+	} else {
+		skb_put_data(skb, data + hdrlen, size);
+	}
 
 	if (node->ws && node->nid == 0)
 		switch (cb->type) {
