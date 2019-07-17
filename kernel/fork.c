@@ -1475,6 +1475,10 @@ static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 	sig->memplus_type = TYPE_NORMAL;
 #endif
 
+#ifdef CONFIG_ANDROID_LMK_ADJ_RBTREE
+	RB_CLEAR_NODE(&sig->adj_node);
+#endif
+
 	mutex_init(&sig->cred_guard_mutex);
 
 	return 0;
@@ -1977,6 +1981,7 @@ static __latent_entropy struct task_struct *copy_process(
 							 p->real_parent->signal->is_child_subreaper;
 			list_add_tail(&p->sibling, &p->real_parent->children);
 			list_add_tail_rcu(&p->tasks, &init_task.tasks);
+			add_2_adj_tree(p);
 #ifdef CONFIG_ADJ_CHAIN
 			adj_chain_attach(p);
 #endif
