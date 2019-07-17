@@ -2,6 +2,7 @@
 /*
  * Copyright (C) 2015-2016, The Linux Foundation. All rights reserved.
  * Copyright (C) 2019 Sultan Alsawaf <sultan@kerneltoast.com>.
+ * Copyright (C) 2019 sm8150 changes pappschlumpf <pappschlumpf@googlemail.com sm8150 changes
  */
 
 #include <linux/dma-buf.h>
@@ -10,22 +11,24 @@
 #include <linux/slab.h>
 #include <asm/barrier.h>
 
+struct msm_iommu_map {
+	struct device *dev;
+	struct msm_iommu_meta *meta;
+	struct list_head lnode;
+	struct scatterlist *sgl;
+	enum dma_data_direction dir;
+	unsigned int nents;
+	atomic_t refcount;
+	unsigned long attrs;
+	dma_addr_t buf_start_addr;
+};
+
 struct msm_iommu_meta {
 	struct rb_node node;
 	struct list_head maps;
 	atomic_t refcount;
 	rwlock_t lock;
 	void *buffer;
-};
-
-struct msm_iommu_map {
-	struct device *dev;
-	struct msm_iommu_meta *meta;
-	struct list_head lnode;
-	struct scatterlist sgl;
-	enum dma_data_direction dir;
-	unsigned int nents;
-	atomic_t refcount;
 };
 
 static struct rb_root iommu_root;
@@ -130,11 +133,27 @@ static struct msm_iommu_meta *msm_iommu_meta_create(struct dma_buf *dma_buf,
 	return meta;
 }
 
+static struct scatterlist *clone_sgl(struct scatterlist *sg, int nents)
+{
+	struct scatterlist *next, *s;
+	int i;
+	struct sg_table table;
+
+	if (sg_alloc_table(&table, nents, GFP_KERNEL))
+		return NULL;
+	next = table.sgl;
+	for_each_sg(sg, s, nents, i) {
+		*next = *s;
+		next = sg_next(next);
+	}
+	return table.sgl;
+}
+
 int msm_dma_map_sg_attrs(struct device *dev, struct scatterlist *sg, int nents,
 			 enum dma_data_direction dir, struct dma_buf *dma_buf,
-			 struct dma_attrs *attrs)
+			 unsigned long attrs)
 {
-	bool late_unmap = !dma_get_attr(DMA_ATTR_NO_DELAYED_UNMAP, attrs);
+	bool late_unmap = !(attrs & DMA_ATTR_NO_DELAYED_UNMAP);
 	bool extra_meta_ref_taken = false;
 	struct msm_iommu_meta *meta;
 	struct msm_iommu_map *map;
@@ -174,15 +193,47 @@ int msm_dma_map_sg_attrs(struct device *dev, struct scatterlist *sg, int nents,
 	read_unlock(&meta->lock);
 
 	if (map) {
-		sg->dma_address = map->sgl.dma_address;
-		sg->dma_length = map->sgl.dma_length;
+		if (nents == map->nents &&
+		    dir == map->dir &&
+		    (attrs & ~DMA_ATTR_SKIP_CPU_SYNC) ==
+		    (map->attrs & ~DMA_ATTR_SKIP_CPU_SYNC) &&
+		    sg_phys(sg) == map->buf_start_addr) {
+			struct scatterlist *sg_tmp = sg;
+			struct scatterlist *map_sg;
+			int i;
 
-		/*
-		 * Ensure all outstanding changes for coherent buffers are
-		 * applied to the cache before any DMA occurs.
-		 */
-		if (is_device_dma_coherent(dev))
-			dmb(ish);
+			for_each_sg(map->sgl, map_sg, nents, i) {
+				sg_dma_address(sg_tmp) = sg_dma_address(map_sg);
+				sg_dma_len(sg_tmp) = sg_dma_len(map_sg);
+				if (sg_dma_len(map_sg) == 0)
+					break;
+
+				sg_tmp = sg_next(sg_tmp);
+				if (sg_tmp == NULL)
+					break;
+			}
+
+			if ((attrs & DMA_ATTR_SKIP_CPU_SYNC) == 0)
+				dma_sync_sg_for_device(dev, map->sgl,
+					map->nents, map->dir);
+			/*
+			* Ensure all outstanding changes for coherent buffers are
+			* applied to the cache before any DMA occurs.
+			*/
+			if (is_device_dma_coherent(dev))
+				dmb(ish);
+		} else {
+			bool start_diff = sg_phys(sg) != map->buf_start_addr;
+
+			dev_err(dev, "lazy map request differs:\n"
+				"req dir:%d, original dir:%d\n"
+				"req nents:%d, original nents:%d\n"
+				"req map attrs:%lu, original map attrs:%lu\n"
+				"req buffer start address differs:%d\n",
+				dir, map->dir, nents, map->nents, attrs,
+				map->attrs, start_diff);
+			ret = -EINVAL;
+		}
 	} else {
 		map = kmalloc(sizeof(*map), GFP_KERNEL);
 		if (!map) {
@@ -191,20 +242,21 @@ int msm_dma_map_sg_attrs(struct device *dev, struct scatterlist *sg, int nents,
 		}
 
 		ret = dma_map_sg_attrs(dev, sg, nents, dir, attrs);
-		if (ret != nents) {
+		if (!ret) {
 			kfree(map);
 			goto release_meta;
 		}
 
 		*map = (typeof(*map)){
+			.nents = nents,
 			.dev = dev,
+			.dir = dir,
+			.attrs = attrs,
+			.buf_start_addr = sg_phys(sg),
 			.meta = meta,
 			.lnode = LIST_HEAD_INIT(map->lnode),
 			.refcount = ATOMIC_INIT(1 + !!late_unmap),
-			.sgl = {
-				.dma_address = sg->dma_address,
-				.dma_length = sg->dma_length
-			}
+			.sgl = clone_sgl(sg, nents)
 		};
 
 		msm_iommu_map_add(meta, map);
@@ -217,8 +269,8 @@ release_meta:
 	return ret;
 }
 
-void msm_dma_unmap_sg(struct device *dev, struct scatterlist *sgl, int nents,
-		      enum dma_data_direction dir, struct dma_buf *dma_buf)
+void msm_dma_unmap_sg_attrs(struct device *dev, struct scatterlist *sgl, int nents,
+		      enum dma_data_direction dir, struct dma_buf *dma_buf, unsigned long attrs)
 {
 	struct msm_iommu_meta *meta;
 	struct msm_iommu_map *map;
@@ -234,7 +286,11 @@ void msm_dma_unmap_sg(struct device *dev, struct scatterlist *sgl, int nents,
 		write_unlock(&meta->lock);
 		return;
 	}
+	
+	if (attrs && ((attrs & DMA_ATTR_SKIP_CPU_SYNC) == 0))
+		dma_sync_sg_for_cpu(dev, map->sgl, map->nents, dir);
 
+	map->attrs = attrs;
 	map->dir = dir;
 	free_map = atomic_dec_and_test(&map->refcount);
 	if (free_map)
@@ -242,7 +298,7 @@ void msm_dma_unmap_sg(struct device *dev, struct scatterlist *sgl, int nents,
 	write_unlock(&meta->lock);
 
 	if (free_map) {
-		dma_unmap_sg(map->dev, &map->sgl, map->nents, map->dir);
+		dma_unmap_sg_attrs(map->dev, map->sgl, map->nents, map->dir, map->attrs);
 		kfree(map);
 	}
 
@@ -279,10 +335,10 @@ int msm_dma_unmap_all_for_dev(struct device *dev)
 	read_unlock(&rb_tree_lock);
 
 	list_for_each_entry_safe(map, map_next, &unmap_list, lnode) {
-		dma_unmap_sg(map->dev, &map->sgl, map->nents, map->dir);
+		dma_unmap_sg(map->dev, map->sgl, map->nents, map->dir);
 		kfree(map);
 	}
-
+	
 	return ret;
 }
 
@@ -308,7 +364,7 @@ void msm_dma_buf_freed(void *buffer)
 	write_unlock(&meta->lock);
 
 	list_for_each_entry_safe(map, map_next, &unmap_list, lnode) {
-		dma_unmap_sg(map->dev, &map->sgl, map->nents, map->dir);
+		dma_unmap_sg(map->dev, map->sgl, map->nents, map->dir);
 		kfree(map);
 	}
 
