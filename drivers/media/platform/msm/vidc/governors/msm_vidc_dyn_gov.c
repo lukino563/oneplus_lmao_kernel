@@ -926,6 +926,9 @@ static int __get_target_freq(struct devfreq *dev, unsigned long *freq)
 
 	gov = container_of(dev->governor,
 			struct governor, devfreq_gov);
+	if (!gov)
+		return -EINVAL;
+
 	dev->profile->get_dev_status(dev->dev.parent, &stats);
 	vidc_data = (struct msm_vidc_gov_data *)stats.private_data;
 
