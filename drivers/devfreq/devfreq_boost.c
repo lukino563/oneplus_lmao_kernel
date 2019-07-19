@@ -206,14 +206,18 @@ static void devfreq_max_unboost(struct work_struct *work)
 static void devfreq_update_boosts(struct boost_dev *b, unsigned long state)
 {
 	struct devfreq *df = b->df;
-
-	mutex_lock(&df->lock);
+	if (!READ_ONCE(b->df))
+		return;
 	if (!test_bit(SCREEN_ON, &state)) {
+		mutex_lock(&df->lock);
 		df->min_freq = df->profile->freq_table[0];
 		df->max_boost = test_bit(WAKE_BOOST, &state) ? 
 					true :
 					false;
+		update_devfreq(df);
+		mutex_unlock(&df->lock);
 	} else {
+		mutex_lock(&df->lock);
 		df->min_freq = test_bit(FLEX_BOOST, &state) ?
 			min(devfreq_boost_freq_low, df->max_freq) :
 			df->profile->freq_table[0];
@@ -221,9 +225,9 @@ static void devfreq_update_boosts(struct boost_dev *b, unsigned long state)
 			min(devfreq_boost_freq, df->max_freq) :
 			df->profile->freq_table[0];
 			df->max_boost = test_bit(MAX_BOOST, &state);
+		update_devfreq(df);
+		mutex_unlock(&df->lock);
 	}
-	update_devfreq(df);
-	mutex_unlock(&df->lock);
 }
 
 
