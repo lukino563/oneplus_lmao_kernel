@@ -281,8 +281,9 @@ static void tp_touch_down(struct touchpanel_data *ts, struct point_info points, 
     }
 
 #ifdef CONFIG_WAKE_GESTURES
-    if (g_tp->is_suspended && wg_switch)
-        points.x += 5000;
+    if (is_oos())
+    	if (g_tp->is_suspended && wg_switch)
+        	points.x += 5000;
 #endif
 
     input_report_abs(ts->input_dev, ABS_MT_POSITION_X, points.x);
@@ -1213,6 +1214,7 @@ EXPORT_SYMBOL(switch_usb_state);
  *    gesture_enable = 1 : enable gesture when ps is far away
  *    gesture_enable = 2 : disable gesture when ps is near
  */
+/*
 static ssize_t proc_gesture_control_write(struct file *file, const char __user *buffer, size_t count, loff_t *ppos)
 {
     int value = 0;
@@ -1259,7 +1261,7 @@ static ssize_t proc_gesture_control_write(struct file *file, const char __user *
 		TPD_INFO("%s: gesture_enable = %d, is_suspended = %d\n", __func__, ts->gesture_enable, ts->is_suspended);
 		if (ts->is_incell_panel && (ts->suspend_state == TP_RESUME_EARLY_EVENT) && (ts->tp_resume_order == LCD_TP_RESUME)) {
 		    TPD_INFO("tp will resume, no need mode_switch in incell panel\n"); /*avoid i2c error or tp rst pulled down in lcd resume*/
-		} else if (ts->is_suspended)
+	/*	} else if (ts->is_suspended)
 		    operate_mode_switch(ts);
 	    }else {
 		TPD_INFO("%s: do not do same operator :%d\n", __func__, value);
@@ -1267,8 +1269,8 @@ static ssize_t proc_gesture_control_write(struct file *file, const char __user *
 	    mutex_unlock(&ts->mutex);
 	}
     return count;
-}
-
+}*/
+/*
 static ssize_t proc_gesture_control_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
 {
     int ret = 0;
@@ -1282,7 +1284,7 @@ static ssize_t proc_gesture_control_read(struct file *file, char __user *user_bu
     	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
     }
     return ret;
-}
+}*/
 
 static ssize_t proc_coordinate_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
 {
@@ -1303,13 +1305,13 @@ static ssize_t proc_coordinate_read(struct file *file, char __user *user_buf, si
 
     return ret;
 }
-
+/*
 static const struct file_operations proc_gesture_control_fops = {
     .write = proc_gesture_control_write,
     .read  = proc_gesture_control_read,
     .open  = simple_open,
     .owner = THIS_MODULE,
-};
+};*/
 
 static const struct file_operations proc_coordinate_fops = {
     .read  = proc_coordinate_read,
@@ -2404,9 +2406,17 @@ static DEVICE_ATTR(tp_fw_update, 0644, sec_update_fw_show, sec_update_fw_store);
 #define GESTURE_ATTR(name, out) \
 	static ssize_t name##_enable_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos) \
 	{ \
+		struct touchpanel_data *ts = PDE_DATA(file_inode(file)); \
 		int ret = 0; \
+		char page[PAGESIZE]; \
+		char page_oos[4]; \
 		if (is_oos()) { \
-			char page[PAGESIZE]; \
+			if (!ts) \
+        			return count; \
+			TPD_DEBUG("gesture_enable is: %d\n", ts->gesture_enable); \
+			ret = sprintf(page_oos, "%d\n", ts->gesture_enable); \
+			ret = simple_read_from_buffer(user_buf, count, ppos, page_oos, strlen(page_oos)); \
+		} else {\
 			ret = sprintf(page, "%d\n", out); \
 			ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page)); \
 		} \
@@ -2414,9 +2424,53 @@ static DEVICE_ATTR(tp_fw_update, 0644, sec_update_fw_show, sec_update_fw_store);
 	} \
 	static ssize_t name##_enable_write_func(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos) \
 	{ \
+		struct touchpanel_data *ts = PDE_DATA(file_inode(file)); \
+		int value = 0; \
 		int enabled = 0; \
-		if (!is_oos()) { \
-			char page[PAGESIZE] = {0}; \
+		char page[PAGESIZE] = {0}; \
+		char buf[4] = {0}; \
+		if (is_oos()) {  \
+			if (count > 2) \
+        			return count; \
+    			if (!ts) \
+        			return count; \
+    			if (copy_from_user(buf, user_buf, count)) { \
+        			TPD_INFO("%s: read proc input error.\n", __func__); \
+        			return count; \
+    			} \
+			TPD_DEBUG("%s write argc1[0x%x],argc2[0x%x]\n",__func__,buf[0],buf[1]); \
+			UpVee_enable = (buf[0] & BIT0)?1:0; \
+			DouSwip_enable = (buf[0] & BIT1)?1:0; \
+			LeftVee_enable = (buf[0] & BIT3)?1:0; \
+			RightVee_enable = (buf[0] & BIT4)?1:0; \
+			Circle_enable = (buf[0] & BIT6)?1:0; \
+			DouTap_enable = (buf[0] & BIT7)?1:0; \
+			Sgestrue_enable = (buf[1] & BIT0)?1:0; \
+			Mgestrue_enable	= (buf[1] & BIT1)?1:0; \
+			Wgestrue_enable = (buf[1] & BIT2)?1:0; \
+			SingleTap_enable = (buf[1] & BIT3)?1:0; \
+			Enable_gesture = (buf[1] & BIT7)?1:0; \
+			if (UpVee_enable || DouSwip_enable || LeftVee_enable || RightVee_enable \
+				|| Circle_enable || DouTap_enable || Sgestrue_enable || Mgestrue_enable \
+				|| Wgestrue_enable || SingleTap_enable || Enable_gesture) { \
+				value = 1; \
+			} else { \
+				value = 0; \
+			} \
+    			mutex_lock(&ts->mutex); \
+    			if (ts->gesture_enable != value) { \
+       				ts->gesture_enable = value; \
+				tp_1v8_power = ts->gesture_enable; \
+       				TPD_INFO("%s: gesture_enable = %d, is_suspended = %d\n", __func__, ts->gesture_enable, ts->is_suspended); \
+        			if (ts->is_incell_panel && (ts->suspend_state == TP_RESUME_EARLY_EVENT) && (ts->tp_resume_order == LCD_TP_RESUME)) { \
+            				TPD_INFO("tp will resume, no need mode_switch in incell panel\n"); /*avoid i2c error or tp rst pulled down in lcd resume*/ \
+        			} else if (ts->is_suspended) \
+            				operate_mode_switch(ts); \
+    			} else { \
+       				 TPD_INFO("%s: do not do same operator :%d\n", __func__, value); \
+    			} \
+    			mutex_unlock(&ts->mutex); \
+		} else { \
 			copy_from_user(page, user_buf, count); \
 			sscanf(page, "%d", &enabled); \
 			out = enabled > 0 ? 1 : 0; \
@@ -2430,6 +2484,7 @@ static DEVICE_ATTR(tp_fw_update, 0644, sec_update_fw_show, sec_update_fw_store);
 	    .owner = THIS_MODULE, \
 	};
 
+GESTURE_ATTR(gesture, Enable_gesture);
 GESTURE_ATTR(single_tap, SingleTap_enable);
 GESTURE_ATTR(double_tap, DouTap_enable);
 GESTURE_ATTR(up_arrow, UpVee_enable);
@@ -2447,7 +2502,10 @@ GESTURE_ATTR(letter_m, Mgestrue_enable);
 GESTURE_ATTR(letter_s, Sgestrue_enable);
 
 #define CREATE_PROC_NODE(PARENT, NAME, MODE) \
-	prEntry_tmp = proc_create(#NAME, MODE, PARENT, &NAME##_proc_fops); \
+	if (is_oos()) \
+		prEntry_tmp = proc_create_data(#NAME, MODE, prEntry_tp, &NAME##_proc_fops, ts); \
+	else \
+		prEntry_tmp = proc_create(#NAME, MODE, PARENT, &NAME##_proc_fops); \
 	if (prEntry_tmp == NULL) { \
 		ret = -ENOMEM; \
 		TPD_INFO("%s: Couldn't create proc entry, %d\n", __func__, __LINE__); \
@@ -2511,12 +2569,13 @@ static int init_touchpanel_proc(struct touchpanel_data *ts)
 
     //proc files-step2-4:/proc/touchpanel/double_tap_enable (black gesture related interface)
     if (ts->black_gesture_support) {
-	if (is_oos) {
-        	prEntry_tmp = proc_create_data("gesture_enable", 0666, prEntry_tp, &proc_gesture_control_fops, ts);
+	if (is_oos()) {
+		CREATE_GESTURE_NODE(gesture);
+        	/*prEntry_tmp = proc_create_data("gesture_enable", 0666, prEntry_tp, &proc_gesture_control_fops, ts);
         	if (prEntry_tmp == NULL) {
             		ret = -ENOMEM;
            		TPD_INFO("%s: Couldn't create proc entry, %d\n", __func__, __LINE__);
-       		}
+       		}*/
 	} else {
 		CREATE_GESTURE_NODE(single_tap);
 	        CREATE_GESTURE_NODE(double_tap);
@@ -4648,7 +4707,8 @@ int register_common_touch_device(struct touchpanel_data *pdata)
     int cpu;
 
     int ret = -1;
- 
+    if (is_oos())
+ 	tp_1v8_power = 1;
     TPD_INFO("%s  is called\n", __func__);
 
 	//step : FTM process
@@ -5113,12 +5173,19 @@ static int tp_suspend(struct device *dev)
 
     //step6:gesture mode status process
     if (ts->black_gesture_support) {
-        if (wg_switch)
-	    goto EXIT;
-        else if (ts->gesture_enable == 1) {
-            ts->ts_ops->mode_switch(ts->chip_data, MODE_GESTURE, true);
-            goto EXIT;
-        }
+	if (is_oos()) {
+        	if (wg_switch)
+	   	 	goto EXIT;
+        	else if (ts->gesture_enable == 1) {
+            		ts->ts_ops->mode_switch(ts->chip_data, MODE_GESTURE, true);
+            		goto EXIT;
+        	}
+	} else {
+		if (ts->gesture_enable == 1) {
+            		ts->ts_ops->mode_switch(ts->chip_data, MODE_GESTURE, true);
+            		goto EXIT;
+       	 	}
+	}		
     }
 
     //step7:skip suspend operate only when gesture_enable is 0
@@ -5302,10 +5369,16 @@ static int fb_notifier_callback(struct notifier_block *self, unsigned long event
                 if (ts->tp_suspend_order == TP_LCD_SUSPEND) {
                     tp_suspend(ts->dev);
                 } else if (ts->tp_suspend_order == LCD_TP_SUSPEND) {
+				if (is_oos()) {
 					if (!ts->gesture_enable && !wg_switch) {
 						disable_irq_nosync(ts->irq);	//avoid iic error
 					}
-					tp_suspend(ts->dev);
+				} else {
+					if (!ts->gesture_enable) {
+						disable_irq_nosync(ts->irq);	//avoid iic error
+					}
+				}
+				tp_suspend(ts->dev);
                 }
             } else if (event == MSM_DRM_EVENT_BLANK) {   //event
 
@@ -5399,10 +5472,17 @@ void tp_i2c_suspend(struct touchpanel_data *ts)
 {
     ts->i2c_ready = false;
     if (ts->black_gesture_support) {
-        if (ts->gesture_enable == 1 || wg_switch) {
-            /*enable gpio wake system through interrupt*/
-            enable_irq_wake(ts->irq);
-        }
+	if (is_oos()) {
+        	if (ts->gesture_enable == 1 || wg_switch) {
+            		/*enable gpio wake system through interrupt*/
+            		enable_irq_wake(ts->irq);
+        	}
+	} else {
+		if (ts->gesture_enable == 1) {
+			/*enable gpio wake system through interrupt*/
+            		enable_irq_wake(ts->irq);
+		}
+	}
     }
     disable_irq_nosync(ts->irq);
 }
@@ -5410,14 +5490,21 @@ void tp_i2c_suspend(struct touchpanel_data *ts)
 void tp_i2c_resume(struct touchpanel_data *ts)
 {
     if (ts->black_gesture_support) {
-        if (ts->gesture_enable == 1 || wg_switch) {
-            /*disable gpio wake system through intterrupt*/
-            disable_irq_wake(ts->irq);
-        }
-        if (wg_changed) {
-            wg_switch = wg_switch_temp;
-            wg_changed = false;
-        }
+	if (is_oos()) {
+        	if (ts->gesture_enable == 1 || wg_switch) {
+            		/*disable gpio wake system through intterrupt*/
+            		disable_irq_wake(ts->irq);
+        	}
+		if (wg_changed) {
+            		wg_switch = wg_switch_temp;
+            		wg_changed = false;
+        	}
+	} else {
+		if (ts->gesture_enable == 1) {
+			/*disable gpio wake system through intterrupt*/
+            		disable_irq_wake(ts->irq);
+        	}
+	}
     }
     enable_irq(ts->irq);	//avoid other irq wakeup system tp irq will be no response.
     ts->i2c_ready = true;
