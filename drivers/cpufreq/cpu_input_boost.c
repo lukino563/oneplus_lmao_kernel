@@ -63,6 +63,7 @@ module_param(max_stune_boost_offset, short, 0644);
 module_param(flex_stune_boost_offset, short, 0644);
 module_param(gpu_boost_freq, uint, 0644);
 module_param(gpu_min_freq, uint, 0644);
+module_param(gpu_sleep_freq, uint, 0644);
 module_param(max_stune_boost_extender_ms, uint, 0644);
 module_param(stune_boost_extender_ms, uint, 0644);
 #endif
