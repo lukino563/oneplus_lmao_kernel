@@ -567,7 +567,7 @@ static ssize_t __cgroup1_procs_write(struct kernfs_open_file *of,
 			else if ((task->cpu > 3) && (task->cpu < 7))
 				cpu_input_boost_kick_cluster2(1000);
 #ifdef CONFIG_DEVFRQ_BOOST
-			devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 1000);
+			devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 100);
 #endif
 		}
 	}
