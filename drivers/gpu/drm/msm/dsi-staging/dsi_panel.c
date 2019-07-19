@@ -4669,7 +4669,7 @@ int dsi_panel_post_unprepare(struct dsi_panel *panel)
 			   panel->name, rc);
 		goto error;
 	}
-	if (is_oos)
+	//if (is_oos)
 		if (!tp_1v8_power) {
 			if (panel->tp_enable1v8_gpio > 0) {
 				pr_err("disable tp 1v8 gpio\n");
