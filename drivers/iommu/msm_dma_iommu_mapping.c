@@ -113,6 +113,22 @@ static void msm_iommu_meta_put(struct msm_iommu_meta *meta, int count)
 	kfree(meta);
 }
 
+static void msm_iommu_map_destroy(struct msm_iommu_map *map)
+{
+	struct sg_table table;
+
+	table.nents = table.orig_nents = map->nents;
+	table.sgl = map->sgl;
+
+	/* Skip an additional cache maintenance on the dma unmap path */
+	if (!(map->attrs & DMA_ATTR_SKIP_CPU_SYNC))
+		map->attrs |= DMA_ATTR_SKIP_CPU_SYNC;
+	dma_unmap_sg_attrs(map->dev, map->sgl, map->nents, map->dir,
+			map->attrs);
+	sg_free_table(&table);
+	kfree(map);
+}
+
 static struct msm_iommu_meta *msm_iommu_meta_create(struct dma_buf *dma_buf,
 						    bool get_extra_ref)
 {
@@ -136,16 +152,18 @@ static struct msm_iommu_meta *msm_iommu_meta_create(struct dma_buf *dma_buf,
 static struct scatterlist *clone_sgl(struct scatterlist *sg, int nents)
 {
 	struct scatterlist *next, *s;
-	int i;
 	struct sg_table table;
+	int i;
 
 	if (sg_alloc_table(&table, nents, GFP_KERNEL))
 		return NULL;
+
 	next = table.sgl;
 	for_each_sg(sg, s, nents, i) {
 		*next = *s;
 		next = sg_next(next);
 	}
+
 	return table.sgl;
 }
 
@@ -157,7 +175,7 @@ int msm_dma_map_sg_attrs(struct device *dev, struct scatterlist *sg, int nents,
 	bool extra_meta_ref_taken = false;
 	struct msm_iommu_meta *meta;
 	struct msm_iommu_map *map;
-	int ret;
+	int ret, i;
 
 	if (IS_ERR_OR_NULL(dev)) {
 		pr_err("%s: dev pointer is invalid\n", __func__);
@@ -198,18 +216,16 @@ int msm_dma_map_sg_attrs(struct device *dev, struct scatterlist *sg, int nents,
 		    (attrs & ~DMA_ATTR_SKIP_CPU_SYNC) ==
 		    (map->attrs & ~DMA_ATTR_SKIP_CPU_SYNC) &&
 		    sg_phys(sg) == map->buf_start_addr) {
-			struct scatterlist *sg_tmp = sg;
-			struct scatterlist *map_sg;
-			int i;
+			struct scatterlist *sg_tmp = sg, *map_sg;
 
 			for_each_sg(map->sgl, map_sg, nents, i) {
 				sg_dma_address(sg_tmp) = sg_dma_address(map_sg);
 				sg_dma_len(sg_tmp) = sg_dma_len(map_sg);
-				if (sg_dma_len(map_sg) == 0)
+				if (!sg_dma_len(map_sg))
 					break;
 
 				sg_tmp = sg_next(sg_tmp);
-				if (sg_tmp == NULL)
+				if (!sg_tmp)
 					break;
 			}
 
@@ -233,8 +249,11 @@ int msm_dma_map_sg_attrs(struct device *dev, struct scatterlist *sg, int nents,
 				dir, map->dir, nents, map->nents, attrs,
 				map->attrs, start_diff);
 			ret = -EINVAL;
+			goto release_meta;
 		}
 	} else {
+		struct scatterlist *sgl;
+
 		map = kmalloc(sizeof(*map), GFP_KERNEL);
 		if (!map) {
 			ret = -ENOMEM;
@@ -247,6 +266,13 @@ int msm_dma_map_sg_attrs(struct device *dev, struct scatterlist *sg, int nents,
 			goto release_meta;
 		}
 
+		sgl = clone_sgl(sg, nents);
+		if (!sgl) {
+			kfree(map);
+			ret = -ENOMEM;
+			goto release_meta;
+		}
+
 		*map = (typeof(*map)){
 			.nents = nents,
 			.dev = dev,
@@ -256,7 +282,7 @@ int msm_dma_map_sg_attrs(struct device *dev, struct scatterlist *sg, int nents,
 			.meta = meta,
 			.lnode = LIST_HEAD_INIT(map->lnode),
 			.refcount = ATOMIC_INIT(1 + !!late_unmap),
-			.sgl = clone_sgl(sg, nents)
+			.sgl = sgl
 		};
 
 		msm_iommu_map_add(meta, map);
@@ -297,10 +323,8 @@ void msm_dma_unmap_sg_attrs(struct device *dev, struct scatterlist *sgl, int nen
 		list_del(&map->lnode);
 	write_unlock(&meta->lock);
 
-	if (free_map) {
-		dma_unmap_sg_attrs(map->dev, map->sgl, map->nents, map->dir, map->attrs);
-		kfree(map);
-	}
+	if (free_map)
+		msm_iommu_map_destroy(map);
 
 	msm_iommu_meta_put(meta, 1);
 }
@@ -334,10 +358,8 @@ int msm_dma_unmap_all_for_dev(struct device *dev)
 	}
 	read_unlock(&rb_tree_lock);
 
-	list_for_each_entry_safe(map, map_next, &unmap_list, lnode) {
-		dma_unmap_sg(map->dev, map->sgl, map->nents, map->dir);
-		kfree(map);
-	}
+	list_for_each_entry_safe(map, map_next, &unmap_list, lnode)
+		msm_iommu_map_destroy(map);
 	
 	return ret;
 }
@@ -363,10 +385,8 @@ void msm_dma_buf_freed(void *buffer)
 	}
 	write_unlock(&meta->lock);
 
-	list_for_each_entry_safe(map, map_next, &unmap_list, lnode) {
-		dma_unmap_sg(map->dev, map->sgl, map->nents, map->dir);
-		kfree(map);
-	}
+	list_for_each_entry_safe(map, map_next, &unmap_list, lnode)
+		msm_iommu_map_destroy(map);
 
 	msm_iommu_meta_put(meta, 1);
 }
