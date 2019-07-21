@@ -4707,7 +4707,7 @@ int register_common_touch_device(struct touchpanel_data *pdata)
     int cpu;
 
     int ret = -1;
-    if (is_oos())
+    if (!is_oos())
  	tp_1v8_power = 1;
     TPD_INFO("%s  is called\n", __func__);
 
