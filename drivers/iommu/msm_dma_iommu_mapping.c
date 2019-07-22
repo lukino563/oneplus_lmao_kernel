@@ -99,11 +99,11 @@ static struct msm_iommu_map *msm_iommu_map_lookup(struct msm_iommu_meta *meta,
 	return NULL;
 }
 
-static void msm_iommu_meta_put(struct msm_iommu_meta *meta, int count)
+static void msm_iommu_meta_put(struct msm_iommu_meta *meta)
 {
 	struct rb_root *root = &iommu_root;
 
-	if (atomic_sub_return(count, &meta->refcount))
+	if (atomic_dec_return(&meta->refcount))
 		return;
 
 	write_lock(&rb_tree_lock);
@@ -171,44 +171,32 @@ int msm_dma_map_sg_attrs(struct device *dev, struct scatterlist *sg, int nents,
 			 enum dma_data_direction dir, struct dma_buf *dma_buf,
 			 unsigned long attrs)
 {
-	bool late_unmap = !(attrs & DMA_ATTR_NO_DELAYED_UNMAP);
-	bool extra_meta_ref_taken = false;
+	int not_lazy  = !(attrs & DMA_ATTR_NO_DELAYED_UNMAP);
 	struct msm_iommu_meta *meta;
 	struct msm_iommu_map *map;
 	int ret, i;
 
-	if (IS_ERR_OR_NULL(dev)) {
-		pr_err("%s: dev pointer is invalid\n", __func__);
-		return -EINVAL;
-	}
-
-	if (IS_ERR_OR_NULL(sg)) {
-		pr_err("%s: sg table pointer is invalid\n", __func__);
-		return -EINVAL;
-	}
-
-	if (IS_ERR_OR_NULL(dma_buf)) {
-		pr_err("%s: dma_buf pointer is invalid\n", __func__);
-		return -EINVAL;
-	}
-
 	meta = msm_iommu_meta_lookup(dma_buf->priv);
 	if (meta) {
 		atomic_inc(&meta->refcount);
+		read_lock(&meta->lock);
+		map = msm_iommu_map_lookup(meta, dev);
+		if (map)
+			atomic_inc(&map->refcount);
+		read_unlock(&meta->lock);
 	} else {
-		meta = msm_iommu_meta_create(dma_buf, late_unmap);
-		if (!meta)
-			return -ENOMEM;
+		while (!(meta = kmalloc(sizeof(*meta), GFP_KERNEL)));
 
-		if (late_unmap)
-			extra_meta_ref_taken = true;
+		*meta = (typeof(*meta)){
+			.buffer = dma_buf->priv,
+			.refcount = ATOMIC_INIT(2 - not_lazy),
+			.lock = __RW_LOCK_UNLOCKED(&meta->lock),
+			.maps = LIST_HEAD_INIT(meta->maps)
+		};
+
+		msm_iommu_meta_add(meta);
+		map = NULL;
 	}
-
-	read_lock(&meta->lock);
-	map = msm_iommu_map_lookup(meta, dev);
-	if (map)
-		atomic_inc(&map->refcount);
-	read_unlock(&meta->lock);
 
 	if (map) {
 		if (nents == map->nents &&
@@ -254,17 +242,8 @@ int msm_dma_map_sg_attrs(struct device *dev, struct scatterlist *sg, int nents,
 	} else {
 		struct scatterlist *sgl;
 
-		map = kmalloc(sizeof(*map), GFP_KERNEL);
-		if (!map) {
-			ret = -ENOMEM;
-			goto release_meta;
-		}
-
-		ret = dma_map_sg_attrs(dev, sg, nents, dir, attrs);
-		if (!ret) {
-			kfree(map);
-			goto release_meta;
-		}
+		while (!(map = kmalloc(sizeof(*map), GFP_KERNEL)));
+		while (!dma_map_sg_attrs(dev, sg, nents, dir, attrs));
 
 		sgl = clone_sgl(sg, nents);
 		if (!sgl) {
@@ -274,14 +253,14 @@ int msm_dma_map_sg_attrs(struct device *dev, struct scatterlist *sg, int nents,
 		}
 
 		*map = (typeof(*map)){
-			.nents = nents,
 			.dev = dev,
 			.dir = dir,
 			.attrs = attrs,
 			.buf_start_addr = sg_phys(sg),
 			.meta = meta,
+			.nents = nents,
 			.lnode = LIST_HEAD_INIT(map->lnode),
-			.refcount = ATOMIC_INIT(1 + !!late_unmap),
+			.refcount = ATOMIC_INIT(2 - not_lazy),
 			.sgl = sgl
 		};
 
@@ -291,7 +270,7 @@ int msm_dma_map_sg_attrs(struct device *dev, struct scatterlist *sg, int nents,
 	return nents;
 
 release_meta:
-	msm_iommu_meta_put(meta, 1 + !!extra_meta_ref_taken);
+	msm_iommu_meta_put(meta);
 	return ret;
 }
 
@@ -326,7 +305,7 @@ void msm_dma_unmap_sg_attrs(struct device *dev, struct scatterlist *sgl, int nen
 	if (free_map)
 		msm_iommu_map_destroy(map);
 
-	msm_iommu_meta_put(meta, 1);
+	msm_iommu_meta_put(meta);
 }
 
 int msm_dma_unmap_all_for_dev(struct device *dev)
@@ -388,5 +367,5 @@ void msm_dma_buf_freed(void *buffer)
 	list_for_each_entry_safe(map, map_next, &unmap_list, lnode)
 		msm_iommu_map_destroy(map);
 
-	msm_iommu_meta_put(meta, 1);
+	msm_iommu_meta_put(meta);
 }
