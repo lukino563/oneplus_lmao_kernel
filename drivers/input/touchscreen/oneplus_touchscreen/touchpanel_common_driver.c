@@ -887,7 +887,6 @@ static void tp_work_func(struct touchpanel_data *ts)
      *  1.IRQ_EXCEPTION /IRQ_GESTURE /IRQ_IGNORE /IRQ_FW_CONFIG --->should be only reported  individually
      *  2.IRQ_TOUCH && IRQ_BTN_KEY --->should depends on real situation && set correspond bit on trigger_reason
      */
-    pm_qos_update_request(&ts->pm_qos_req_dma, PM_QOS_DEFAULT_VALUE);
 
     cur_event = ts->ts_ops->trigger_reason(ts->chip_data, ts->gesture_enable, ts->is_suspended);
 
@@ -913,8 +912,6 @@ static void tp_work_func(struct touchpanel_data *ts)
     }  else if (CHK_BIT(cur_event, IRQ_FW_AUTO_RESET)) {
         tp_fw_auto_reset_handle(ts);
     }
-
-    pm_qos_update_request(&ts->pm_qos_req_dma, PM_QOS_DEFAULT_VALUE);
 }
 
 static void tp_work_func_unlock(struct touchpanel_data *ts)
@@ -1069,6 +1066,8 @@ static irqreturn_t tp_irq_thread_fn(int irq, void *dev_id)
 {
     struct touchpanel_data *ts = (struct touchpanel_data *)dev_id;
 
+    pm_qos_update_request(&ts->pm_qos_req_dma, 100);
+
     if (ts->int_mode == BANNABLE) {
 		__pm_stay_awake(&ts->source);	//avoid system enter suspend lead to i2c error
         mutex_lock(&ts->mutex);
@@ -1078,6 +1077,9 @@ static irqreturn_t tp_irq_thread_fn(int irq, void *dev_id)
     } else {
         tp_work_func_unlock(ts);
     }
+
+    pm_qos_update_request(&ts->pm_qos_req_dma, PM_QOS_DEFAULT_VALUE);
+
     return IRQ_HANDLED;
 }
 #endif
