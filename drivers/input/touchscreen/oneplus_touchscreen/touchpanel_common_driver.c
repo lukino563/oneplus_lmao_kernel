@@ -43,8 +43,6 @@
 
 #include "touchpanel_common.h"
 #include "util_interface/touch_interfaces.h"
-
-#define PM_QOS_VALUE_TP 100
 /*******Part0:LOG TAG Declear************************/
 #define TPD_PRINT_POINT_NUM 150
 #define TPD_DEVICE "touchpanel"
@@ -889,7 +887,7 @@ static void tp_work_func(struct touchpanel_data *ts)
      *  1.IRQ_EXCEPTION /IRQ_GESTURE /IRQ_IGNORE /IRQ_FW_CONFIG --->should be only reported  individually
      *  2.IRQ_TOUCH && IRQ_BTN_KEY --->should depends on real situation && set correspond bit on trigger_reason
      */
-    pm_qos_update_request(&ts->pm_qos_req_dma, 100);
+    pm_qos_update_request(&ts->pm_qos_req_dma, PM_QOS_DEFAULT_VALUE);
 
     cur_event = ts->ts_ops->trigger_reason(ts->chip_data, ts->gesture_enable, ts->is_suspended);
 
@@ -916,7 +914,7 @@ static void tp_work_func(struct touchpanel_data *ts)
         tp_fw_auto_reset_handle(ts);
     }
 
-    pm_qos_update_request(&ts->pm_qos_req_dma, PM_QOS_VALUE_TP);
+    pm_qos_update_request(&ts->pm_qos_req_dma, PM_QOS_DEFAULT_VALUE);
 }
 
 static void tp_work_func_unlock(struct touchpanel_data *ts)
@@ -4587,12 +4585,11 @@ int register_common_touch_device(struct touchpanel_data *pdata)
     }
 #ifdef CONFIG_SMP
     ts->pm_qos_req_dma.type = PM_QOS_REQ_AFFINE_IRQ;
-    irq_set_perf_affinity(ts->irq);
     ts->pm_qos_req_dma.irq = ts->irq;
 #endif
 
     pm_qos_add_request(&ts->pm_qos_req_dma, PM_QOS_CPU_DMA_LATENCY,
-		PM_QOS_VALUE_TP);
+		PM_QOS_DEFAULT_VALUE);
 
     if (ts->l2pc_cpus_mask) {
 
