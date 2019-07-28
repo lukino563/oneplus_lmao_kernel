@@ -288,9 +288,6 @@ static int read_inline_xattr(struct inode *inode, struct page *ipage,
 }
 
 <<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> fae7dc47bdda... f2fs: introduce read_xattr_block
 static int read_xattr_block(struct inode *inode, void *txattr_addr)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
@@ -300,11 +297,7 @@ static int read_xattr_block(struct inode *inode, void *txattr_addr)
 	void *xattr_addr;
 
 	/* The inode already has an extended attribute block. */
-<<<<<<< HEAD
 	xpage = f2fs_get_node_page(sbi, xnid);
-=======
-	xpage = get_node_page(sbi, xnid);
->>>>>>> fae7dc47bdda... f2fs: introduce read_xattr_block
 	if (IS_ERR(xpage))
 		return PTR_ERR(xpage);
 
@@ -315,22 +308,15 @@ static int read_xattr_block(struct inode *inode, void *txattr_addr)
 	return 0;
 }
 
-<<<<<<< HEAD
 =======
 >>>>>>> 148edd027e9c... f2fs: introduce read_inline_xattr
-=======
->>>>>>> fae7dc47bdda... f2fs: introduce read_xattr_block
 static int lookup_all_xattrs(struct inode *inode, struct page *ipage,
 				unsigned int index, unsigned int len,
 				const char *name, struct f2fs_xattr_entry **xe,
 				void **base_addr, int *base_size)
 {
-<<<<<<< HEAD
 	void *cur_addr, *txattr_addr, *last_txattr_addr;
 	void *last_addr = NULL;
-=======
-	void *cur_addr, *txattr_addr, *last_addr = NULL;
->>>>>>> fae7dc47bdda... f2fs: introduce read_xattr_block
 	nid_t xnid = F2FS_I(inode)->i_xattr_nid;
 	unsigned int inline_size = inline_xattr_size(inode);
 	int err = 0;
