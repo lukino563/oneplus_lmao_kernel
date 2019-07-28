@@ -263,7 +263,6 @@ static int read_inline_xattr(struct inode *inode, struct page *ipage,
 	void *inline_addr;
 
 	if (ipage) {
-<<<<<<< HEAD
 		inline_addr = inline_xattr_addr(inode, ipage);
 	} else {
 		page = f2fs_get_node_page(sbi, inode->i_ino);
@@ -271,15 +270,6 @@ static int read_inline_xattr(struct inode *inode, struct page *ipage,
 			return PTR_ERR(page);
 
 		inline_addr = inline_xattr_addr(inode, page);
-=======
-		inline_addr = inline_xattr_addr(ipage);
-	} else {
-		page = get_node_page(sbi, inode->i_ino);
-		if (IS_ERR(page))
-			return PTR_ERR(page);
-
-		inline_addr = inline_xattr_addr(page);
->>>>>>> 148edd027e9c... f2fs: introduce read_inline_xattr
 	}
 	memcpy(txattr_addr, inline_addr, inline_size);
 	f2fs_put_page(page, 1);
@@ -287,7 +277,6 @@ static int read_inline_xattr(struct inode *inode, struct page *ipage,
 	return 0;
 }
 
-<<<<<<< HEAD
 static int read_xattr_block(struct inode *inode, void *txattr_addr)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
@@ -308,8 +297,6 @@ static int read_xattr_block(struct inode *inode, void *txattr_addr)
 	return 0;
 }
 
-=======
->>>>>>> 148edd027e9c... f2fs: introduce read_inline_xattr
 static int lookup_all_xattrs(struct inode *inode, struct page *ipage,
 				unsigned int index, unsigned int len,
 				const char *name, struct f2fs_xattr_entry **xe,
