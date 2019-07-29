@@ -22,7 +22,6 @@
 #include <linux/kthread.h>
 #include <linux/freezer.h>
 #include <linux/page_owner.h>
-#include <linux/psi.h>
 #include <linux/msm_drm_notify.h>
 #include <linux/moduleparam.h>
 #include <linux/time.h>
