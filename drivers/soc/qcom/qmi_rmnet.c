@@ -760,7 +760,6 @@ EXPORT_SYMBOL(qmi_rmnet_qos_exit);
 #ifdef CONFIG_QCOM_QMI_POWER_COLLAPSE
 static struct workqueue_struct  *rmnet_ps_wq;
 static struct rmnet_powersave_work *rmnet_work;
-static bool rmnet_work_quit;
 static LIST_HEAD(ps_list);
 
 struct rmnet_powersave_work {
@@ -843,10 +842,9 @@ EXPORT_SYMBOL(qmi_rmnet_set_powersave_mode);
 
 static void qmi_rmnet_work_restart(void *port)
 {
-	rcu_read_lock();
-	if (!rmnet_work_quit)
-		queue_delayed_work(rmnet_ps_wq, &rmnet_work->work, NO_DELAY);
-	rcu_read_unlock();
+	if (!rmnet_ps_wq || !rmnet_work)
+		return;
+	queue_delayed_work(rmnet_ps_wq, &rmnet_work->work, NO_DELAY);
 }
 
 static void qmi_rmnet_check_stats(struct work_struct *work)
@@ -873,9 +871,13 @@ static void qmi_rmnet_check_stats(struct work_struct *work)
 		qmi->ps_ignore_grant = false;
 
 		/* Register to get QMI DFC and DL marker */
-		if (qmi_rmnet_set_powersave_mode(real_work->port, 0) < 0)
-			goto end;
+		if (qmi_rmnet_set_powersave_mode(real_work->port, 0) < 0) {
+			/* If this failed need to retry quickly */
+			queue_delayed_work(rmnet_ps_wq,
+					   &real_work->work, HZ / 50);
+			return;
 
+		}
 		qmi->ps_enabled = false;
 
 		/* Do a query when coming out of powersave */
@@ -905,9 +907,11 @@ static void qmi_rmnet_check_stats(struct work_struct *work)
 			goto end;
 
 		/* Deregister to suppress QMI DFC and DL marker */
-		if (qmi_rmnet_set_powersave_mode(real_work->port, 1) < 0)
-			goto end;
-
+		if (qmi_rmnet_set_powersave_mode(real_work->port, 1) < 0) {
+			queue_delayed_work(rmnet_ps_wq,
+					   &real_work->work, PS_INTERVAL);
+			return;
+		}
 		qmi->ps_enabled = true;
 
 		/* Ignore grant after going into powersave */
@@ -925,10 +929,7 @@ static void qmi_rmnet_check_stats(struct work_struct *work)
 		return;
 	}
 end:
-	rcu_read_lock();
-	if (!rmnet_work_quit)
-		queue_delayed_work(rmnet_ps_wq, &real_work->work, PS_INTERVAL);
-	rcu_read_unlock();
+	queue_delayed_work(rmnet_ps_wq, &real_work->work, PS_INTERVAL);
 }
 
 static void qmi_rmnet_work_set_active(void *port, int status)
@@ -964,7 +965,6 @@ void qmi_rmnet_work_init(void *port)
 	rmnet_get_packets(rmnet_work->port, &rmnet_work->old_rx_pkts,
 			  &rmnet_work->old_tx_pkts);
 
-	rmnet_work_quit = false;
 	qmi_rmnet_work_set_active(rmnet_work->port, 1);
 	queue_delayed_work(rmnet_ps_wq, &rmnet_work->work, PS_INTERVAL);
 }
@@ -987,10 +987,6 @@ void qmi_rmnet_work_exit(void *port)
 {
 	if (!rmnet_ps_wq || !rmnet_work)
 		return;
-
-	rmnet_work_quit = true;
-	synchronize_rcu();
-
 	cancel_delayed_work_sync(&rmnet_work->work);
 	destroy_workqueue(rmnet_ps_wq);
 	qmi_rmnet_work_set_active(port, 0);

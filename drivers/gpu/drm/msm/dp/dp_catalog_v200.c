@@ -57,6 +57,7 @@ struct dp_catalog_io {
 	struct dp_io_data *hdcp_physical;
 	struct dp_io_data *dp_p1;
 	struct dp_io_data *dp_tcsr;
+	struct dp_io_data *dp_pixel_mn;
 };
 
 struct dp_catalog_private_v200 {
@@ -170,16 +171,13 @@ static void dp_catalog_panel_config_msa_v200(struct dp_catalog_panel *panel,
 	}
 
 	catalog = dp_catalog_get_priv_v200(panel);
-	io_data = catalog->io->dp_mmss_cc;
+	io_data = catalog->io->dp_pixel_mn;
 
 	if (panel->stream_id == DP_STREAM_1)
-		strm_reg_off = MMSS_DP_PIXEL1_M_V200 -
-					MMSS_DP_PIXEL_M_V200;
+		strm_reg_off = MMSS_DP_PIXEL1_M_V200 - MMSS_DP_PIXEL_M_V200;
 
-	pixel_m = dp_read(catalog->exe_mode, io_data,
-			MMSS_DP_PIXEL_M_V200 + strm_reg_off);
-	pixel_n = dp_read(catalog->exe_mode, io_data,
-			MMSS_DP_PIXEL_N_V200 + strm_reg_off);
+	pixel_m = dp_read(catalog->exe_mode, io_data, strm_reg_off + 0x0);
+	pixel_n = dp_read(catalog->exe_mode, io_data, strm_reg_off + 0x4);
 	pr_debug("pixel_m=0x%x, pixel_n=0x%x\n", pixel_m, pixel_n);
 
 	mvid = (pixel_m & 0xFFFF) * 5;

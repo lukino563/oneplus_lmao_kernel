@@ -87,6 +87,7 @@ struct dp_catalog_io {
 	struct dp_io_data *hdcp_physical;
 	struct dp_io_data *dp_p1;
 	struct dp_io_data *dp_tcsr;
+	struct dp_io_data *dp_pixel_mn;
 };
 
 /* audio related catalog functions */
@@ -729,6 +730,8 @@ static void dp_catalog_ctrl_state_ctrl(struct dp_catalog_ctrl *ctrl, u32 state)
 {
 	struct dp_catalog_private *catalog;
 	struct dp_io_data *io_data;
+	u8 l_map[4], i;
+	u32 lane_map_reg = 0;
 
 	if (!ctrl) {
 		pr_err("invalid input\n");
@@ -2396,6 +2399,7 @@ static void dp_catalog_get_io_buf(struct dp_catalog_private *catalog)
 	dp_catalog_fill_io_buf(hdcp_physical);
 	dp_catalog_fill_io_buf(dp_p1);
 	dp_catalog_fill_io_buf(dp_tcsr);
+	dp_catalog_fill_io_buf(dp_pixel_mn);
 }
 
 static void dp_catalog_get_io(struct dp_catalog_private *catalog)
@@ -2415,6 +2419,7 @@ static void dp_catalog_get_io(struct dp_catalog_private *catalog)
 	dp_catalog_fill_io(hdcp_physical);
 	dp_catalog_fill_io(dp_p1);
 	dp_catalog_fill_io(dp_tcsr);
+	dp_catalog_fill_io(dp_pixel_mn);
 }
 
 static void dp_catalog_set_exe_mode(struct dp_catalog *dp_catalog, char *mode)

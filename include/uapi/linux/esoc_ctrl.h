@@ -31,6 +31,7 @@ struct esoc_link_data {
 #define ESOC_REQ_CRASH_SHUTDOWN ESOC_REQ_CRASH_SHUTDOWN
 #define ESOC_PON_RETRY		ESOC_PON_RETRY
 #define ESOC_BOOT_FAIL_ACTION
+#define ESOC_LINK_ID
 
 enum esoc_boot_fail_action {
 	BOOT_FAIL_ACTION_RETRY,

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -43,7 +43,7 @@
 
 static DEFINE_VDD_REGULATORS(vdd_cx, VDD_NUM, 1, vdd_corner);
 static DEFINE_VDD_REGULATORS(vdd_cx_ao, VDD_NUM, 1, vdd_corner);
-static DEFINE_VDD_REGULATORS(vdd_mm, VDD_NUM, 1, vdd_corner);
+static DEFINE_VDD_REGULATORS(vdd_mm, VDD_MM_NUM, 1, vdd_corner);
 
 enum {
 	P_AUD_REF_CLK,
@@ -2675,6 +2675,19 @@ static struct clk_branch gcc_pcie_0_clkref_clk = {
 	},
 };
 
+static struct clk_branch gcc_pcie_0_clkref_clk = {
+	.halt_reg = 0x8c00c,
+	.halt_check = BRANCH_HALT,
+	.clkr = {
+		.enable_reg = 0x8c00c,
+		.enable_mask = BIT(0),
+		.hw.init = &(struct clk_init_data){
+			.name = "gcc_pcie_0_clkref_clk",
+			.ops = &clk_branch2_ops,
+		},
+	},
+};
+
 static struct clk_branch gcc_pcie_0_mstr_axi_clk = {
 	.halt_reg = 0x6b018,
 	.halt_check = BRANCH_HALT_VOTED,
@@ -2757,6 +2770,19 @@ static struct clk_branch gcc_pcie_1_cfg_ahb_clk = {
 		.enable_mask = BIT(28),
 		.hw.init = &(struct clk_init_data){
 			.name = "gcc_pcie_1_cfg_ahb_clk",
+			.ops = &clk_branch2_ops,
+		},
+	},
+};
+
+static struct clk_branch gcc_pcie_1_clkref_clk = {
+	.halt_reg = 0x8c02c,
+	.halt_check = BRANCH_HALT,
+	.clkr = {
+		.enable_reg = 0x8c02c,
+		.enable_mask = BIT(0),
+		.hw.init = &(struct clk_init_data){
+			.name = "gcc_pcie_1_clkref_clk",
 			.ops = &clk_branch2_ops,
 		},
 	},
@@ -4563,6 +4589,19 @@ static struct clk_branch gcc_usb3_prim_clkref_clk = {
 	},
 };
 
+static struct clk_branch gcc_usb3_prim_clkref_clk = {
+	.halt_reg = 0x8c008,
+	.halt_check = BRANCH_HALT,
+	.clkr = {
+		.enable_reg = 0x8c008,
+		.enable_mask = BIT(0),
+		.hw.init = &(struct clk_init_data){
+			.name = "gcc_usb3_prim_clkref_clk",
+			.ops = &clk_branch2_ops,
+		},
+	},
+};
+
 static struct clk_branch gcc_usb3_prim_phy_aux_clk = {
 	.halt_reg = 0xf050,
 	.halt_check = BRANCH_HALT,
@@ -4607,6 +4646,19 @@ static struct clk_gate2 gcc_usb3_prim_phy_pipe_clk = {
 		.hw.init = &(struct clk_init_data){
 			.name = "gcc_usb3_prim_phy_pipe_clk",
 			.ops = &clk_gate2_ops,
+		},
+	},
+};
+
+static struct clk_branch gcc_usb3_sec_clkref_clk = {
+	.halt_reg = 0x8c028,
+	.halt_check = BRANCH_HALT,
+	.clkr = {
+		.enable_reg = 0x8c028,
+		.enable_mask = BIT(0),
+		.hw.init = &(struct clk_init_data){
+			.name = "gcc_usb3_sec_clkref_clk",
+			.ops = &clk_branch2_ops,
 		},
 	},
 };
@@ -5050,6 +5102,7 @@ static const struct qcom_reset_map gcc_sdmshrike_resets[] = {
 	[GCC_USB30_PRIM_BCR] = { 0xf000 },
 	[GCC_USB30_SEC_BCR] = { 0x10000 },
 	[GCC_USB_PHY_CFG_AHB2PHY_BCR] = { 0x6a000 },
+	[GCC_VIDEO_AXIC_CLK_BCR] = { 0xb02c, 2 },
 };
 
 

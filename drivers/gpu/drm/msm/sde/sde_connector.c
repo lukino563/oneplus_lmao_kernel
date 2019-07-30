@@ -762,7 +762,7 @@ static int _sde_connector_update_hbm(struct sde_connector *c_conn)
 			}
 			SDE_ATRACE_END("set_hbm_off");
 			mutex_unlock(&dsi_display->panel->panel_lock);
-			_sde_connector_update_bl_scale(c_conn);	
+			_sde_connector_update_bl_scale(c_conn);
 			if (rc) {
 				pr_err("failed to send DSI_CMD_HBM_OFF cmds, rc=%d\n", rc);
 				return rc;

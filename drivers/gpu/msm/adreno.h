@@ -219,6 +219,7 @@ enum adreno_gpurev {
 	ADRENO_REV_A512 = 512,
 	ADRENO_REV_A530 = 530,
 	ADRENO_REV_A540 = 540,
+	ADRENO_REV_A610 = 610,
 	ADRENO_REV_A612 = 612,
 	ADRENO_REV_A615 = 615,
 	ADRENO_REV_A616 = 616,
@@ -443,6 +444,10 @@ enum gpu_coresight_sources {
  * @chipid: Chip ID specific to the GPU
  * @gmem_base: Base physical address of GMEM
  * @gmem_size: GMEM size
+ * @uche_gmem_base: Base physical address of UCHE GMEM
+ * @qdss_gfx_base: Base physical address of QDSS_GFX_DBG registers for Coresight
+ * @qdss_gfx_len: QDSS_GFX_DBG register size
+ * @qdss_gfx_virt: Pointer to virtual address of QDSS_GFX_DBG regiter
  * @cx_misc_len: Length of the CX MISC register block
  * @cx_misc_virt: Pointer where the CX MISC block is mapped
  * @gpucore: Pointer to the adreno_gpu_core structure
@@ -515,6 +520,7 @@ enum gpu_coresight_sources {
  * @gpuhtw_llc_slice_enable: To enable the GPUHTW system cache slice or not
  * @zap_loaded: Used to track if zap was successfully loaded or not
  * @soc_hw_rev: Indicate which SOC hardware revision to use
+ * @gaming_bin: Indicate whether part is a gaming SKU or not
  */
 struct adreno_device {
 	struct kgsl_device dev;    /* Must be first field in this struct */
@@ -522,6 +528,10 @@ struct adreno_device {
 	unsigned int chipid;
 	unsigned long gmem_base;
 	unsigned long gmem_size;
+	unsigned long uche_gmem_base;
+	unsigned long qdss_gfx_base;
+	unsigned long qdss_gfx_len;
+	void __iomem *qdss_gfx_virt;
 	unsigned long cx_dbgc_base;
 	unsigned int cx_dbgc_len;
 	void __iomem *cx_dbgc_virt;
@@ -589,8 +599,9 @@ struct adreno_device {
 	bool gpu_llc_slice_enable;
 	void *gpuhtw_llc_slice;
 	bool gpuhtw_llc_slice_enable;
-	unsigned int zap_loaded;
+	void *zap_handle_ptr;
 	unsigned int soc_hw_rev;
+	bool gaming_bin;
 };
 
 /**
@@ -869,16 +880,24 @@ ssize_t adreno_coresight_store_register(struct device *dev,
 
 /**
  * struct adreno_coresight - GPU specific coresight definition
- * @registers - Array of GPU specific registers to configure trace bus output
- * @count - Number of registers in the array
- * @groups - Pointer to an attribute list of control files
- * @atid - The unique ATID value of the coresight device
+ * @registers: Array of GPU specific registers to configure trace bus output
+ * @count: Number of registers in the array
+ * @groups: Pointer to an attribute list of control files
+ * @atid: The unique ATID value of the coresight device
+ * @read: a function pointer to the appropriate register read function for this
+ * device
+ * @write: a function pointer to the appropriate register write function for
+ * this device
  */
 struct adreno_coresight {
 	struct adreno_coresight_register *registers;
 	unsigned int count;
 	const struct attribute_group **groups;
 	unsigned int atid;
+	void (*read)(struct kgsl_device *device,
+		unsigned int offsetwords, unsigned int *value);
+	void (*write)(struct kgsl_device *device,
+		unsigned int offsetwords, unsigned int value);
 };
 
 
@@ -1013,6 +1032,9 @@ struct adreno_gpudev {
 				bool update_reg);
 	size_t (*snapshot_preemption)(struct kgsl_device *, u8 *,
 				 size_t, void *);
+	void (*zap_shader_unload)(struct adreno_device *);
+	int (*secure_pt_hibernate)(struct adreno_device *);
+	int (*secure_pt_restore)(struct adreno_device *);
 };
 
 /**
@@ -1123,9 +1145,6 @@ void adreno_shadermem_regread(struct kgsl_device *device,
 						unsigned int offsetwords,
 						unsigned int *value);
 
-static inline void adreno_snapshot(struct kgsl_device *device,
-		struct kgsl_snapshot *snapshot,
-		struct kgsl_context *context) {}
 
 int adreno_reset(struct kgsl_device *device, int fault);
 
@@ -1293,6 +1312,7 @@ static inline int adreno_is_a6xx(struct adreno_device *adreno_dev)
 			ADRENO_GPUREV(adreno_dev) < 700;
 }
 
+ADRENO_TARGET(a610, ADRENO_REV_A610)
 ADRENO_TARGET(a612, ADRENO_REV_A612)
 ADRENO_TARGET(a618, ADRENO_REV_A618)
 ADRENO_TARGET(a630, ADRENO_REV_A630)
@@ -1332,6 +1352,18 @@ static inline int adreno_is_a640v1(struct adreno_device *adreno_dev)
 static inline int adreno_is_a640v2(struct adreno_device *adreno_dev)
 {
 	return (ADRENO_GPUREV(adreno_dev) == ADRENO_REV_A640) &&
+		(ADRENO_CHIPID_PATCH(adreno_dev->chipid) == 1);
+}
+
+static inline int adreno_is_a680v1(struct adreno_device *adreno_dev)
+{
+	return (ADRENO_GPUREV(adreno_dev) == ADRENO_REV_A680) &&
+		(ADRENO_CHIPID_PATCH(adreno_dev->chipid) == 0);
+}
+
+static inline int adreno_is_a680v2(struct adreno_device *adreno_dev)
+{
+	return (ADRENO_GPUREV(adreno_dev) == ADRENO_REV_A680) &&
 		(ADRENO_CHIPID_PATCH(adreno_dev->chipid) == 1);
 }
 
@@ -1987,7 +2019,8 @@ static inline int adreno_wait_for_halt_ack(struct kgsl_device *device,
 			break;
 		if (time_after(jiffies, wait_for_vbif)) {
 			KGSL_DRV_ERR(device,
-				"Wait limit reached for GBIF/VBIF Halt\n");
+				"GBIF/VBIF Halt ack timeout: reg=%08X mask=%08X status=%08X\n",
+				ack_reg, mask, val);
 			ret = -ETIMEDOUT;
 			break;
 		}

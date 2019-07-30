@@ -1029,6 +1029,7 @@ static int mmc_sdio_suspend(struct mmc_host *host)
 		mmc_retune_needed(host);
 	}
 
+out:
 	mmc_release_host(host);
 	MMC_TRACE(host, "%s: Exit\n", __func__);
 	return 0;
