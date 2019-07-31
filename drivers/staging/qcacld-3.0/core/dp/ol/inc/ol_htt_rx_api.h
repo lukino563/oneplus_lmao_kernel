@@ -905,7 +905,6 @@ uint32_t htt_rx_amsdu_rx_in_order_get_pktlog(qdf_nbuf_t rx_ind_msg);
  * Return: QDF_STATUS
  */
 QDF_STATUS htt_rx_update_smmu_map(struct htt_pdev_t *pdev, bool map);
-
 #else
 static inline QDF_STATUS htt_rx_update_smmu_map(struct htt_pdev_t *pdev, bool map)
 {
