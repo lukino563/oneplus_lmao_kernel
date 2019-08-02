@@ -16,7 +16,7 @@
  *
  * A very rough approximation to the sqrt() function.
  */
-unsigned long int_sqrt(unsigned long x)
+inline unsigned long int_sqrt(unsigned long x)
 {
 	unsigned long b, m, y = 0;
 
