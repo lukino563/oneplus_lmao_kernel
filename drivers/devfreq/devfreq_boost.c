@@ -147,7 +147,7 @@ static void __devfreq_boost_kick_wake(struct boost_dev *b,
 	unsigned long boost_jiffies = msecs_to_jiffies(duration_ms);
 	unsigned long curr_expires, new_expires;
 
-	if (!READ_ONCE(b->df) || test_bit(SCREEN_ON, &b->state))
+	if (!READ_ONCE(b->df))
 		return;
 
 	if (!mod_delayed_work(b->wq_m, &b->max_unboost,
