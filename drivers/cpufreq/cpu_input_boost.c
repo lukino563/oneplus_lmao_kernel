@@ -419,9 +419,6 @@ void cpu_input_boost_kick_cluster1_wake(unsigned int duration_ms)
 	if (duration_ms == 0)
 		return;
 
-	if (test_bit(SCREEN_ON, &b->state))
-		return;
-
 	__cpu_input_boost_kick_cluster1_wake(b, duration_ms);
 }
 
@@ -432,9 +429,6 @@ void cpu_input_boost_kick_cluster2_wake(unsigned int duration_ms)
 	struct boost_drv *b = &boost_drv_g;
 
 	if (duration_ms == 0)
-		return;
-
-	if (test_bit(SCREEN_ON, &b->state))
 		return;
 
 	__cpu_input_boost_kick_cluster2_wake(b, duration_ms);
