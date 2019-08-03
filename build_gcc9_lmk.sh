@@ -20,7 +20,7 @@ export SPL="2019-06"
 export CROSS_COMPILE=${HOME}/android/Toolchains/gcc9arm64/bin/aarch64-linux-gnu-
 export CROSS_COMPILE_ARM32=${HOME}/android/Toolchains/gcc9eabi/bin/arm-eabi-
 #export KBUILD_COMPILER_STRING=$(~/android/Toolchains/clang/clang-r328903/bin/clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')
-DEFCONFIG="smurf_defconfig"
+DEFCONFIG="smurfalmk_defconfig"
 
 # Kernel Details
 VER=".2.6.3.unified"
