@@ -13,6 +13,8 @@
 #include <linux/sort.h>
 #include <linux/version.h>
 #include <uapi/linux/sysinfo.h>
+#include <linux/devfreq_boost.h>
+#include <linux/cpu_input_boost.h>
 
 /* The sched_param struct is located elsewhere in newer kernels */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
@@ -182,6 +184,9 @@ static void scan_and_kill(unsigned long pages_needed)
 	 * is preferred to holding an RCU read lock so that the list of tasks
 	 * is guaranteed to be up to date.
 	 */
+	cpu_input_boost_kick_cluster1(50);
+	cpu_input_boost_kick_cluster2(50);
+	devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 50);
 	read_lock(&tasklist_lock);
 	for (i = 0; i < ARRAY_SIZE(adj_prio); i++) {
 		pages_found += find_victims(victims, &nr_victims, MAX_VICTIMS,
@@ -321,10 +326,7 @@ static int simple_lmk_init_set(const char *val, const struct kernel_param *kp)
 
 	si_meminfo(&i);
 	pr_info("Totalram=%d",i.totalram);
-	if (i.totalram < 1900000) {
-		lmk_aggression = 1;
-		pr_info("Detected <8GB memory: lmk aggression 1");
-	} else if (i.totalram > 2000000) {
+	if (i.totalram > 2000000) {
 		lmk_aggression = 3;
 		pr_info("Detected 12GB memory: lmk aggression 3");
 	} else {
