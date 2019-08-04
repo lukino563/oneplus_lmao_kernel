@@ -12,6 +12,7 @@
 #include <linux/oom.h>
 #include <linux/sort.h>
 #include <linux/version.h>
+#include <uapi/linux/sysinfo.h>
 
 /* The sched_param struct is located elsewhere in newer kernels */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
@@ -37,6 +38,8 @@
 
 /* Kill up to this many victims per reclaim */
 #define MAX_VICTIMS 1024
+
+static unsigned int lmk_aggression __read_mostly = CONFIG_ANDROID_SIMPLE_LMK_AGGRESSION;
 
 struct victim_info {
 	struct task_struct *tsk;
@@ -276,7 +279,7 @@ static int simple_lmk_reclaim_thread(void *data)
 
 void simple_lmk_decide_reclaim(int kswapd_priority)
 {
-	if (kswapd_priority != CONFIG_ANDROID_SIMPLE_LMK_AGGRESSION)
+	if (kswapd_priority != lmk_aggression)
 		return;
 
 	if (!cmpxchg(&needs_reclaim, false, true))
@@ -310,10 +313,24 @@ void simple_lmk_mm_freed(struct mm_struct *mm)
 static int simple_lmk_init_set(const char *val, const struct kernel_param *kp)
 {
 	static bool init_done;
+	struct sysinfo i;
 	struct task_struct *thread;
 
 	if (cmpxchg(&init_done, false, true))
 		return 0;
+
+	si_meminfo(&i);
+	pr_info("Totalram=%d",i.totalram);
+	if (i.totalram < 1900000) {
+		lmk_aggression = 1;
+		pr_info("Detected <8GB memory: lmk aggression 1");
+	} else if (i.totalram > 2000000) {
+		lmk_aggression = 3;
+		pr_info("Detected 12GB memory: lmk aggression 3");
+	} else {
+		lmk_aggression = 2;
+		pr_info("Detected 8GB memory: lmk aggression 2");
+	}
 
 	thread = kthread_run(simple_lmk_reclaim_thread, NULL, "simple_lmkd");
 	BUG_ON(IS_ERR(thread));
